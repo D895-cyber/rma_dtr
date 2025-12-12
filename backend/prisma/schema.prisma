@@ -1,0 +1,306 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  createdDtrCases    DtrCase[]     @relation("DtrCreatedBy")
+  assignedDtrCases   DtrCase[]     @relation("DtrAssignedTo")
+  closedDtrCases     DtrCase[]     @relation("DtrClosedBy")
+  createdRmaCases    RmaCase[]     @relation("RmaCreatedBy")
+  assignedRmaCases   RmaCase[]     @relation("RmaAssignedTo")
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  staff
+  engineer
+  manager
+  admin
+}
+
+// ============================================
+// MASTER DATA
+// ============================================
+
+model Site {
+  id        String   @id @default(uuid())
+  siteName  String   @map("site_name")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  audis     Audi[]
+  dtrCases  DtrCase[]
+  rmaCases  RmaCase[]
+
+  @@map("sites")
+}
+
+model ProjectorModel {
+  id             String   @id @default(uuid())
+  modelNo        String   @unique @map("model_no")
+  manufacturer   String?
+  specifications String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  projectors Projector[]
+  parts      Part[]
+
+  @@map("projector_models")
+}
+
+model Projector {
+  id                String   @id @default(uuid())
+  serialNumber      String   @unique @map("serial_number")
+  projectorModelId  String   @map("projector_model_id")
+  status            String   @default("active") // "active", "maintenance", "retired"
+  installationDate  DateTime? @map("installation_date")
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  projectorModel ProjectorModel @relation(fields: [projectorModelId], references: [id], onDelete: Restrict)
+  audis          Audi[]
+
+  @@index([projectorModelId])
+  @@map("projectors")
+}
+
+model Part {
+  id                String   @id @default(uuid())
+  partName          String   @map("part_name")
+  partNumber        String   @map("part_number")
+  projectorModelId  String   @map("projector_model_id")
+  category          String?  // e.g., "Lamp", "Lens", "Filter", "Board"
+  description       String?  @db.Text
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  projectorModel ProjectorModel @relation(fields: [projectorModelId], references: [id], onDelete: Cascade)
+
+  @@index([projectorModelId])
+  @@unique([partNumber, projectorModelId])
+  @@map("parts")
+}
+
+model Audi {
+  id          String   @id @default(uuid())
+  audiNo      String   @map("audi_no")
+  siteId      String   @map("site_id")
+  projectorId String?  @map("projector_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  site      Site       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  projector Projector? @relation(fields: [projectorId], references: [id], onDelete: SetNull)
+  dtrCases  DtrCase[]
+  rmaCases  RmaCase[]
+
+  @@map("audis")
+}
+
+// ============================================
+// DTR CASE MANAGEMENT
+// ============================================
+
+model DtrCase {
+  id               String         @id @default(uuid())
+  caseNumber       String         @unique @map("case_number")
+  errorDate        DateTime       @map("error_date") @db.Date
+  siteId           String         @map("site_id")
+  audiId           String         @map("audi_id")
+  unitModel        String         @map("unit_model")
+  unitSerial       String         @map("unit_serial")
+  natureOfProblem  String         @map("nature_of_problem") @db.Text
+  actionTaken      String?        @map("action_taken") @db.Text
+  remarks          String?        @db.Text
+  callStatus       DtrCallStatus  @map("call_status")
+  caseSeverity     CaseSeverity   @map("case_severity")
+  createdBy        String         @map("created_by")
+  assignedTo       String?        @map("assigned_to")
+  closedBy         String?        @map("closed_by")
+  closedDate       DateTime?      @map("closed_date")
+  finalRemarks     String?        @map("final_remarks") @db.Text
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  site             Site           @relation(fields: [siteId], references: [id])
+  audi             Audi           @relation(fields: [audiId], references: [id])
+  creator          User           @relation("DtrCreatedBy", fields: [createdBy], references: [id])
+  assignee         User?          @relation("DtrAssignedTo", fields: [assignedTo], references: [id])
+  closer           User?          @relation("DtrClosedBy", fields: [closedBy], references: [id])
+
+  @@index([callStatus])
+  @@index([assignedTo])
+  @@index([createdAt])
+  @@map("dtr_cases")
+}
+
+enum DtrCallStatus {
+  open
+  in_progress @map("in-progress")
+  closed
+  escalated
+}
+
+enum CaseSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+// ============================================
+// RMA CASE MANAGEMENT
+// ============================================
+
+model RmaCase {
+  id                      String     @id @default(uuid())
+  rmaType                 RmaType    @map("rma_type")
+  callLogNumber           String?    @map("call_log_number")  // Numeric value, NOT linked to DTR
+  rmaNumber               String?    @map("rma_number")  // PO Number (optional)
+  rmaOrderNumber          String?    @map("rma_order_number")  // Order Number (optional)
+  rmaRaisedDate           DateTime   @map("rma_raised_date") @db.Date
+  customerErrorDate       DateTime   @map("customer_error_date") @db.Date
+  siteId                  String     @map("site_id")
+  audiId                  String?    @map("audi_id")
+  productName             String     @map("product_name")
+  productPartNumber       String     @map("product_part_number")
+  serialNumber            String     @map("serial_number")
+  defectDetails           String?    @map("defect_details") @db.Text  // Defect description
+  defectivePartNumber     String?    @map("defective_part_number")
+  defectivePartName       String?    @map("defective_part_name")
+  defectivePartSerial     String?    @map("defective_part_serial")
+  isDefectivePartDNR      Boolean    @default(false) @map("is_defective_part_dnr")  // Do Not Return
+  defectivePartDNRReason  String?    @map("defective_part_dnr_reason") @db.Text  // Why DNR
+  replacedPartNumber      String?    @map("replaced_part_number")
+  replacedPartSerial      String?    @map("replaced_part_serial")
+  symptoms                String?    @db.Text
+  shippingCarrier         String?    @map("shipping_carrier")
+  trackingNumberOut       String?    @map("tracking_number_out")
+  shippedDate             DateTime?  @map("shipped_date") @db.Date
+  returnShippedDate       DateTime?  @map("return_shipped_date") @db.Date
+  returnTrackingNumber    String?    @map("return_tracking_number")
+  returnShippedThrough    String?    @map("return_shipped_through")
+  status                  RmaStatus  @default(open)
+  createdBy               String     @map("created_by")
+  assignedTo              String?    @map("assigned_to")
+  notes                   String?    @db.Text
+  createdAt               DateTime   @default(now()) @map("created_at")
+  updatedAt               DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  site      Site       @relation(fields: [siteId], references: [id])
+  audi      Audi?      @relation(fields: [audiId], references: [id])
+  creator   User       @relation("RmaCreatedBy", fields: [createdBy], references: [id])
+  assignee  User?      @relation("RmaAssignedTo", fields: [assignedTo], references: [id])
+
+  @@index([status])
+  @@index([assignedTo])
+  @@index([createdAt])
+  @@index([rmaNumber])
+  @@map("rma_cases")
+}
+
+enum RmaType {
+  RMA
+  SRMA
+  RMA_CL  @map("RMA CL")
+  Lamps
+}
+
+enum RmaStatus {
+  open                        // Case is open, observation is going on
+  rma_raised_yet_to_deliver  @map("rma-raised-yet-to-deliver")  // RMA raised but replacement part yet to deliver to site
+  faulty_in_transit_to_cds   @map("faulty-in-transit-to-cds")   // Defective part in transit back to us from site
+  closed                      // RMA completed, defective part shipped back to OEM
+  cancelled                   // RMA cancelled
+}
+
+// ============================================
+// AUDIT LOG
+// ============================================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  caseId      String   @map("case_id")
+  caseType    CaseType @map("case_type")
+  action      String
+  description String?  @db.Text
+  performedBy String   @map("performed_by")
+  performedAt DateTime @default(now()) @map("performed_at")
+
+  // Relations
+  user User @relation(fields: [performedBy], references: [id])
+
+  @@index([caseId, caseType])
+  @@index([performedAt])
+  @@map("audit_logs")
+}
+
+enum CaseType {
+  DTR
+  RMA
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String           @map("user_id")
+  title     String
+  message   String           @db.Text
+  type      NotificationType
+  caseId    String           @map("case_id")
+  caseType  CaseType         @map("case_type")
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  assignment
+  status_change  @map("status-change")
+  escalation
+  info
+}
+

@@ -1,0 +1,545 @@
+{
+  "info": {
+    "name": "CRM API - Complete Collection",
+    "description": "Full API collection for CRM Backend with Prisma + Neon",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5001/api",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin User\",\n  \"email\": \"admin@company.com\",\n  \"password\": \"password123\",\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.token) {",
+                  "    pm.collectionVariables.set('token', jsonData.data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@company.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 Users",
+      "item": [
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"]
+            }
+          }
+        },
+        {
+          "name": "Get Engineers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/engineers",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "engineers"]
+            }
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sarah Engineer\",\n  \"email\": \"sarah@company.com\",\n  \"password\": \"password123\",\n  \"role\": \"engineer\",\n  \"active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏢 Master Data - Sites",
+      "item": [
+        {
+          "name": "Get All Sites",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/master-data/sites",
+              "host": ["{{baseUrl}}"],
+              "path": ["master-data", "sites"]
+            }
+          }
+        },
+        {
+          "name": "Create Site",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"siteName\": \"ABC Conference Center\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/master-data/sites",
+              "host": ["{{baseUrl}}"],
+              "path": ["master-data", "sites"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🎧 Master Data - Audis",
+      "item": [
+        {
+          "name": "Get All Audis",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/master-data/audis",
+              "host": ["{{baseUrl}}"],
+              "path": ["master-data", "audis"]
+            }
+          }
+        },
+        {
+          "name": "Create Audi",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"audiNo\": \"Audi 1\",\n  \"siteId\": \"SITE_ID_HERE\",\n  \"projectorId\": \"PROJECTOR_ID_HERE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/master-data/audis",
+              "host": ["{{baseUrl}}"],
+              "path": ["master-data", "audis"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📽️ Master Data - Projectors",
+      "item": [
+        {
+          "name": "Get All Projectors",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/master-data/projectors",
+              "host": ["{{baseUrl}}"],
+              "path": ["master-data", "projectors"]
+            }
+          }
+        },
+        {
+          "name": "Create Projector",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"modelNo\": \"Epson EB-L1500U\",\n  \"serialNumber\": \"SN123456789\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/master-data/projectors",
+              "host": ["{{baseUrl}}"],
+              "path": ["master-data", "projectors"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📋 DTR Cases",
+      "item": [
+        {
+          "name": "Get All DTR Cases",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dtr?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["dtr"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create DTR Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseNumber\": \"241205\",\n  \"errorDate\": \"2024-01-15\",\n  \"siteId\": \"SITE_ID_HERE\",\n  \"audiId\": \"AUDI_ID_HERE\",\n  \"unitModel\": \"Epson EB-L1500U\",\n  \"unitSerial\": \"SN123456789\",\n  \"natureOfProblem\": \"Projector not turning on\",\n  \"actionTaken\": \"Checked power supply\",\n  \"remarks\": \"Customer reported issue this morning\",\n  \"callStatus\": \"open\",\n  \"caseSeverity\": \"high\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/dtr",
+              "host": ["{{baseUrl}}"],
+              "path": ["dtr"]
+            }
+          }
+        },
+        {
+          "name": "Update DTR Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/dtr/DTR_ID_HERE/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["dtr", "DTR_ID_HERE", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📦 RMA Cases",
+      "item": [
+        {
+          "name": "Get All RMA Cases",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/rma?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["rma"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create RMA Case",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rmaType\": \"RMA\",\n  \"rmaNumber\": \"RMA-001\",\n  \"rmaOrderNumber\": \"ORD-001\",\n  \"rmaRaisedDate\": \"2024-01-20\",\n  \"customerErrorDate\": \"2024-01-18\",\n  \"siteId\": \"SITE_ID_HERE\",\n  \"audiId\": \"AUDI_ID_HERE\",\n  \"productName\": \"Epson EB-L1500U\",\n  \"productPartNumber\": \"EB-L1500U\",\n  \"serialNumber\": \"SN123456789\",\n  \"symptoms\": \"Device not powering on\",\n  \"status\": \"pending\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/rma",
+              "host": ["{{baseUrl}}"],
+              "path": ["rma"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔔 Notifications",
+      "item": [
+        {
+          "name": "Get My Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"]
+            }
+          }
+        },
+        {
+          "name": "Get Unread Count",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/unread-count",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "unread-count"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Analytics",
+      "item": [
+        {
+          "name": "Dashboard Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "dashboard"]
+            }
+          }
+        },
+        {
+          "name": "Get Trends",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/trends?period=7d&type=dtr",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "trends"],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "7d"
+                },
+                {
+                  "key": "type",
+                  "value": "dtr"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "❤️ Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5000/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["health"]
+        }
+      }
+    }
+  ]
+}
+

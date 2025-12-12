@@ -107,11 +107,22 @@ app.use(errorHandler);
 
 // Export handler for Vercel serverless functions
 export default function handler(req: VercelRequest, res: VercelResponse) {
+  // Add CORS headers early
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  // Handle OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   // Ensure all errors return JSON
   try {
     return app(req, res);
   } catch (error: any) {
     console.error('Unhandled error in API handler:', error);
+    console.error('Error stack:', error.stack);
     if (!res.headersSent) {
       res.status(500).json({
         success: false,

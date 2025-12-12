@@ -10,6 +10,11 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
+// Validate critical environment variables
+if (!process.env.DATABASE_URL) {
+  console.error('⚠️  CRITICAL: DATABASE_URL environment variable is not set!');
+}
+
 // Import routes
 import authRoutes from '../backend/src/routes/auth.routes';
 import userRoutes from '../backend/src/routes/user.routes';
@@ -81,7 +86,13 @@ if (process.env.NODE_ENV === 'development') {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', message: 'CRM API is running', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'OK', 
+    message: 'CRM API is running', 
+    timestamp: new Date().toISOString(),
+    databaseUrl: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
+    nodeEnv: process.env.NODE_ENV || 'not set'
+  });
 });
 
 // API routes

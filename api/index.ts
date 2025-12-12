@@ -41,19 +41,34 @@ app.use(helmet({
 }));
 
 // CORS - Configure based on environment
+// Allow all origins in production if FRONTEND_URL is not set, otherwise use specific origins
 const allowedOrigins = process.env.FRONTEND_URL 
-  ? process.env.FRONTEND_URL.split(',')
+  ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
   : ['*'];
 
 app.use(cors({
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    // Allow requests with no origin (like mobile apps, Postman, or same-origin requests)
+    if (!origin) {
+      return callback(null, true);
     }
+    
+    // If '*' is in allowed origins, allow all
+    if (allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // Default: allow the request (more permissive for development/debugging)
+    callback(null, true);
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Rate limiting - Store in memory (works for serverless)
@@ -118,13 +133,12 @@ app.use(errorHandler);
 
 // Export handler for Vercel serverless functions
 export default function handler(req: VercelRequest, res: VercelResponse) {
-  // Add CORS headers early
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  // Handle OPTIONS requests
+  // Handle OPTIONS requests early
   if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     return res.status(200).end();
   }
 

@@ -7,25 +7,24 @@ declare global {
   var __prisma: PrismaClient | undefined;
 }
 
+// Get DATABASE_URL and ensure it's properly formatted
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  console.error('⚠️  DATABASE_URL environment variable is not set!');
+}
+
 export const prisma =
   global.__prisma ||
   new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL,
-      },
-    },
   });
 
-// In serverless environments, reuse the same instance
+// Cache Prisma Client in global scope to reuse across serverless function invocations
 if (process.env.NODE_ENV !== 'production') {
   global.__prisma = prisma;
 } else {
   // In production/serverless, still cache to avoid multiple instances
-  if (!global.__prisma) {
-    global.__prisma = prisma;
-  }
+  global.__prisma = prisma;
 }
 
 export default prisma;

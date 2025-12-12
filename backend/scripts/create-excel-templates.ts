@@ -81,7 +81,35 @@ createExcelFile('projectors.xlsx',
   ]
 );
 
-// 4. Audis Template
+// 4. Parts Template
+createExcelFile('parts.xlsx',
+  ['partName', 'partNumber', 'modelNo', 'category', 'description'],
+  [
+    {
+      partName: 'Lamp Assy',
+      partNumber: '003-001559-01',
+      modelNo: 'CP2230',
+      category: 'Lamp',
+      description: 'High-performance lamp assembly'
+    },
+    {
+      partName: 'Vane Extractor Duct',
+      partNumber: '003-003701-02',
+      modelNo: 'CP2230',
+      category: 'Filter',
+      description: 'Air extraction vane duct'
+    },
+    {
+      partName: 'Power Supply Board',
+      partNumber: '003-002345-01',
+      modelNo: 'CP2220',
+      category: 'Board',
+      description: 'Main power supply circuit board'
+    }
+  ]
+);
+
+// 5. Audis Template
 createExcelFile('audis.xlsx',
   ['audiNo', 'siteName', 'serialNumber'],
   [
@@ -98,7 +126,7 @@ createExcelFile('audis.xlsx',
   ]
 );
 
-// 5. DTR Cases Template (Simplified with Serial Number Mapping)
+// 6. DTR Cases Template (Simplified with Serial Number Mapping)
 createExcelFile('dtr_cases.xlsx',
   ['caseNumber', 'errorDate', 'serialNumber', 'natureOfProblem', 'actionTaken', 'remarks', 'callStatus', 'caseSeverity', 'createdBy', 'assignedTo'],
   [
@@ -117,7 +145,7 @@ createExcelFile('dtr_cases.xlsx',
   ]
 );
 
-// 6. RMA Cases Template (Simplified with Serial Number Mapping)
+// 7. RMA Cases Template (Simplified with Serial Number Mapping)
 createExcelFile('rma_cases.xlsx',
   [
     'rmaType',
@@ -191,9 +219,10 @@ console.log('📋 Template files:');
 console.log('   1. sites.xlsx');
 console.log('   2. projector_models.xlsx');
 console.log('   3. projectors.xlsx');
-console.log('   4. audis.xlsx');
-console.log('   5. dtr_cases.xlsx');
-console.log('   6. rma_cases.xlsx');
+console.log('   4. parts.xlsx');
+console.log('   5. audis.xlsx');
+console.log('   6. dtr_cases.xlsx');
+console.log('   7. rma_cases.xlsx');
 console.log('');
 console.log('💡 Instructions:');
 console.log('   1. Open each Excel file');

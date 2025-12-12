@@ -687,6 +687,71 @@ async function importRMACases(): Promise<ImportStats> {
   return stats;
 }
 
+// Import Parts
+async function importParts(): Promise<ImportStats> {
+  console.log('\n🔧 Importing Parts...');
+  const data = readExcelFile('parts.xlsx');
+  const stats: ImportStats = { total: data.length, success: 0, failed: 0, errors: [] };
+
+  for (const row of data) {
+    try {
+      if (!row.partName) {
+        throw new Error('Part name is required');
+      }
+
+      if (!row.partNumber) {
+        throw new Error('Part number is required');
+      }
+
+      if (!row.modelNo) {
+        throw new Error('Projector model number (modelNo) is required');
+      }
+
+      // Find the projector model
+      const projectorModel = await prisma.projectorModel.findFirst({
+        where: { modelNo: String(row.modelNo).trim() },
+      });
+
+      if (!projectorModel) {
+        throw new Error(`Projector model "${row.modelNo}" not found. Import projector models first.`);
+      }
+
+      // Check if part already exists for this projector model
+      const existingPart = await prisma.part.findFirst({
+        where: {
+          partNumber: String(row.partNumber).trim(),
+          projectorModelId: projectorModel.id,
+        },
+      });
+
+      if (existingPart) {
+        stats.success++;
+        console.log(`⏭️  Skipped (already exists): ${row.partName} (${row.partNumber}) for model ${row.modelNo}`);
+        continue;
+      }
+
+      await prisma.part.create({
+        data: {
+          partName: String(row.partName).trim(),
+          partNumber: String(row.partNumber).trim(),
+          projectorModelId: projectorModel.id,
+          category: row.category ? String(row.category).trim() : null,
+          description: row.description ? String(row.description).trim() : null,
+        },
+      });
+      stats.success++;
+      console.log(`✅ Created part: ${row.partName} (${row.partNumber}) for model ${row.modelNo}`);
+    } catch (error: any) {
+      stats.failed++;
+      const partNameStr = String(row.partName || 'Unknown').trim();
+      stats.errors.push(`Part "${partNameStr}" (${row.partNumber || 'N/A'}): ${error.message}`);
+      console.log(`❌ Failed: ${partNameStr} - ${error.message}`);
+    }
+  }
+
+  return stats;
+}
+
 // Main import function
 async function main() {
   console.log('╔══════════════════════════════════════════════════════════════════╗');
@@ -700,6 +765,7 @@ async function main() {
     allStats['Sites'] = await importSites();
     allStats['Projector Models'] = await importProjectorModels();
     allStats['Projectors'] = await importProjectors();
+    allStats['Parts'] = await importParts();  // Add parts import after projector models
     allStats['Audis'] = await importAudis();
     
     // Import RMA and DTR cases

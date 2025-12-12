@@ -108,7 +108,19 @@ app.use(errorHandler);
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
-  return app(req, res);
+  // Ensure all errors return JSON
+  try {
+    return app(req, res);
+  } catch (error: any) {
+    console.error('Unhandled error in API handler:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+  }
 }
 
 

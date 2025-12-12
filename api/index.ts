@@ -1,3 +1,4 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -105,8 +106,6 @@ app.use('*', (req, res) => {
 app.use(errorHandler);
 
 // Export handler for Vercel serverless functions
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 export default function handler(req: VercelRequest, res: VercelResponse) {
   // Ensure all errors return JSON
   try {

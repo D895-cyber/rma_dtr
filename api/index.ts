@@ -15,18 +15,18 @@ if (!process.env.DATABASE_URL) {
   console.error('⚠️  CRITICAL: DATABASE_URL environment variable is not set!');
 }
 
-// Import routes
-import authRoutes from '../backend/src/routes/auth.routes';
-import userRoutes from '../backend/src/routes/user.routes';
-import masterDataRoutes from '../backend/src/routes/masterData.routes';
-import partsRoutes from '../backend/src/routes/parts.routes';
-import dtrRoutes from '../backend/src/routes/dtr.routes';
-import rmaRoutes from '../backend/src/routes/rma.routes';
-import notificationRoutes from '../backend/src/routes/notification.routes';
-import analyticsRoutes from '../backend/src/routes/analytics.routes';
+// Import routes from compiled backend
+import authRoutes from '../backend/dist/routes/auth.routes';
+import userRoutes from '../backend/dist/routes/user.routes';
+import masterDataRoutes from '../backend/dist/routes/masterData.routes';
+import partsRoutes from '../backend/dist/routes/parts.routes';
+import dtrRoutes from '../backend/dist/routes/dtr.routes';
+import rmaRoutes from '../backend/dist/routes/rma.routes';
+import notificationRoutes from '../backend/dist/routes/notification.routes';
+import analyticsRoutes from '../backend/dist/routes/analytics.routes';
 
 // Import middleware
-import { errorHandler } from '../backend/src/middleware/error.middleware';
+import { errorHandler } from '../backend/dist/middleware/error.middleware';
 
 const app = express();
 

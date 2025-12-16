@@ -9,6 +9,7 @@ import {
   updateRmaTracking,
   deleteRmaCase,
   getRmaAuditLogs,
+  emailRmaClient,
 } from '../controllers/rma.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/role.middleware';
@@ -25,6 +26,7 @@ router.put('/:id', updateRmaCase);
 router.post('/:id/assign', assignRmaCase);
 router.post('/:id/status', updateRmaStatus);
 router.post('/:id/tracking', updateRmaTracking);
+router.post('/:id/email-client', emailRmaClient);
 router.delete('/:id', requireRole('admin'), deleteRmaCase);
 router.get('/:id/audit-log', getRmaAuditLogs);
 

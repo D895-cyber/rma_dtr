@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/response.util';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../utils/prisma.util';
+import { sendAssignmentEmail, sendRmaClientEmail } from '../utils/email.util';
 
 // Get all RMA cases with filters
 export async function getAllRmaCases(req: AuthRequest, res: Response) {
@@ -247,18 +248,26 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
       },
     });
 
-    // Send notification if assigned
-    if (assignedTo) {
+    // Send notification + email if assigned
+    if (assignedTo && rmaCase.assignee?.email) {
       await prisma.notification.create({
         data: {
           userId: assignedTo,
           title: 'New RMA Case Assigned',
-          message: `You have been assigned to RMA Case #${rmaNumber}`,
+          message: `You have been assigned to RMA Case #${rmaNumber || rmaCase.callLogNumber || 'N/A'}`,
           type: 'assignment',
           caseId: rmaCase.id,
           caseType: 'RMA',
         },
       });
+
+      sendAssignmentEmail({
+        to: rmaCase.assignee.email,
+        engineerName: rmaCase.assignee.name,
+        caseType: 'RMA',
+        caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
+        createdBy: rmaCase.creator?.email,
+      }).catch((err) => console.error('RMA assignment email error:', err));
     }
 
     return sendSuccess(res, { case: rmaCase }, 'RMA case created successfully', 201);
@@ -395,8 +404,8 @@ export async function updateRmaCase(req: AuthRequest, res: Response) {
       },
     });
 
-    // Send notification if assignedTo changed
-    if (cleanUpdateData.assignedTo && cleanUpdateData.assignedTo !== currentCase.assignedTo) {
+    // Send notification + email if assignedTo changed
+    if (cleanUpdateData.assignedTo && cleanUpdateData.assignedTo !== currentCase.assignedTo && rmaCase.assignee?.email) {
       await prisma.notification.create({
         data: {
           userId: cleanUpdateData.assignedTo,
@@ -407,6 +416,14 @@ export async function updateRmaCase(req: AuthRequest, res: Response) {
           caseType: 'RMA',
         },
       });
+
+      sendAssignmentEmail({
+        to: rmaCase.assignee.email,
+        engineerName: rmaCase.assignee.name,
+        caseType: 'RMA',
+        caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
+        createdBy: rmaCase.creator?.email,
+      }).catch((err) => console.error('RMA reassignment email error:', err));
     }
 
     return sendSuccess(res, { case: rmaCase }, 'RMA case updated successfully');
@@ -453,6 +470,9 @@ export async function assignRmaCase(req: AuthRequest, res: Response) {
         assignee: {
           select: { id: true, name: true, email: true },
         },
+        creator: {
+          select: { id: true, name: true, email: true },
+        },
       },
     });
 
@@ -467,7 +487,7 @@ export async function assignRmaCase(req: AuthRequest, res: Response) {
       },
     });
 
-    // Send notification to the assigned user
+    // Send notification + email to the assigned user
     await prisma.notification.create({
       data: {
         userId: userId,
@@ -478,6 +498,16 @@ export async function assignRmaCase(req: AuthRequest, res: Response) {
         caseType: 'RMA',
       },
     });
+
+    if (rmaCase.assignee?.email) {
+      sendAssignmentEmail({
+        to: rmaCase.assignee.email,
+        engineerName: rmaCase.assignee.name,
+        caseType: 'RMA',
+        caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
+        createdBy: rmaCase.creator?.email,
+      }).catch((err) => console.error('RMA assign endpoint email error:', err));
+    }
 
     return sendSuccess(res, { case: rmaCase }, 'RMA case assigned successfully');
   } catch (error: any) {
@@ -574,6 +604,86 @@ export async function updateRmaTracking(req: AuthRequest, res: Response) {
   } catch (error: any) {
     console.error('Update RMA tracking error:', error);
     return sendError(res, 'Failed to update tracking', 500, error.message);
+  }
+}
+
+// Send RMA docket email to client
+export async function emailRmaClient(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params;
+    const { email, clientName } = req.body as { email?: string; clientName?: string };
+
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return sendError(res, 'Valid client email is required', 400);
+    }
+
+    const rmaCase = await prisma.rmaCase.findUnique({
+      where: { id },
+      include: {
+        site: true,
+      },
+    });
+
+    if (!rmaCase) {
+      return sendError(res, 'RMA case not found', 404);
+    }
+
+    // Validate that replacement part details exist
+    if (!rmaCase.replacedPartNumber) {
+      return sendError(
+        res,
+        'Replacement part details are not present. Please add Replacement Part Number before sending email to client.',
+        400
+      );
+    }
+
+    // Check if at least one tracking detail exists (optional but recommended)
+    const hasTrackingInfo = !!(rmaCase.shippingCarrier || rmaCase.trackingNumberOut || rmaCase.shippedDate);
+    if (!hasTrackingInfo) {
+      return sendError(
+        res,
+        'Replacement shipment details are not present. Please add Shipping Carrier, Tracking Number, or Shipped Date before sending email to client.',
+        400
+      );
+    }
+
+    const caseNumber = rmaCase.rmaNumber || rmaCase.callLogNumber || rmaCase.id;
+
+    // Format shipped date if present
+    const shippedDateFormatted = rmaCase.shippedDate
+      ? new Date(rmaCase.shippedDate).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        })
+      : null;
+
+    await sendRmaClientEmail({
+      to: email,
+      clientName: clientName || null,
+      caseNumber,
+      siteName: (rmaCase as any).site?.siteName || null,
+      replacedPartNumber: rmaCase.replacedPartNumber,
+      shippingCarrier: rmaCase.shippingCarrier,
+      trackingNumberOut: rmaCase.trackingNumberOut,
+      shippedDate: shippedDateFormatted,
+    });
+
+    // Record in audit log
+    await prisma.auditLog.create({
+      data: {
+        caseId: rmaCase.id,
+        caseType: 'RMA',
+        action: 'Client Email Sent',
+        description: `Client email sent to ${email} with replacement part details`,
+        performedBy: req.user!.userId,
+      },
+    });
+
+    return sendSuccess(res, null, 'Client email sent successfully');
+  } catch (error: any) {
+    console.error('Email RMA client error:', error);
+    return sendError(res, 'Failed to send client email', 500, error.message);
   }
 }
 

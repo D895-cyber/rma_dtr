@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, Edit, Check, Package, Truck, History } from 'lucide-react';
+import { X, Edit, Check, Package, Truck, History, Mail } from 'lucide-react';
 import { RMACase, useUsersAPI } from '../hooks/useAPI';
+import rmaService from '../services/rma.service';
 
 interface RMADetailProps {
   rma: RMACase;
@@ -37,20 +38,22 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
   
   const [isEditing, setIsEditing] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
+  const [clientEmail, setClientEmail] = useState('');
+  const [sendingClientEmail, setSendingClientEmail] = useState(false);
   // Track original DNR value to detect changes
-  const originalDNRValue = rma.isDefectivePartDNR === true || rma.isDefectivePartDNR === 'true' || false;
+  const originalDNRValue = rma.isDefectivePartDNR === true || false;
   // Track original assignment value
-  const originalAssignedTo = rma.assignee?.email || rma.assignedTo || '';
+  const originalAssignedTo = (rma as any).assignee?.email || rma.assignedTo || '';
   const [formData, setFormData] = useState({
     ...rma,
     // Ensure siteId and audiId are extracted from nested objects
-    siteId: rma.siteId || (typeof rma.site === 'object' && rma.site ? rma.site.id : ''),
-    audiId: rma.audiId || (typeof rma.audi === 'object' && rma.audi ? rma.audi.id : undefined),
+    siteId: rma.siteId || ((rma as any).site && typeof (rma as any).site === 'object' ? (rma as any).site.id : ''),
+    audiId: rma.audiId || ((rma as any).audi && typeof (rma as any).audi === 'object' ? (rma as any).audi.id : undefined),
     // Ensure siteName is populated from nested site object when not provided
     siteName:
       (rma as any).siteName ||
-      (typeof rma.site === 'object' && rma.site && (rma.site as any).siteName
-        ? (rma.site as any).siteName
+      ((rma as any).site && typeof (rma as any).site === 'object' && (rma as any).site.siteName
+        ? (rma as any).site.siteName
         : ''),
     rmaRaisedDate: formatDateForInput(rma.rmaRaisedDate),
     customerErrorDate: formatDateForInput(rma.customerErrorDate),
@@ -156,6 +159,24 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
     }
   };
 
+  const handleSendClientEmail = async () => {
+    if (!clientEmail || !clientEmail.includes('@')) {
+      alert('Please enter a valid client email address.');
+      return;
+    }
+    try {
+      setSendingClientEmail(true);
+      await rmaService.emailClient(rma.id, { email: clientEmail });
+      alert('Email sent to client successfully.');
+      setClientEmail('');
+    } catch (error: any) {
+      console.error('Failed to send client email:', error);
+      alert('Failed to send email to client. Please try again.');
+    } finally {
+      setSendingClientEmail(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -205,6 +226,15 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
                 <Edit className="w-5 h-5" />
               </button>
             )}
+            {/* Email client button */}
+            <button
+              onClick={handleSendClientEmail}
+              disabled={sendingClientEmail || !clientEmail}
+              className="hidden md:inline-flex items-center gap-1 px-3 py-2 text-sm text-blue-600 border border-blue-100 rounded-lg hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Mail className="w-4 h-4" />
+              {sendingClientEmail ? 'Sending…' : 'Email Client'}
+            </button>
             <button
               onClick={onClose}
               className="p-2 text-gray-400 hover:text-gray-600 rounded-lg transition-colors"
@@ -348,6 +378,32 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
               <option value="CI RMA">CI RMA</option>
               <option value="Lamps">Lamps</option>
             </select>
+          </div>
+
+          {/* Client email for notifications */}
+          <div className="md:col-span-2">
+            <label className="block text-sm text-gray-700 mb-2">Client Email for RMA Updates</label>
+            <div className="flex flex-col md:flex-row gap-2">
+              <input
+                type="email"
+                value={clientEmail}
+                onChange={(e) => setClientEmail(e.target.value)}
+                placeholder="customer@example.com"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={handleSendClientEmail}
+                disabled={sendingClientEmail || !clientEmail}
+                className="inline-flex items-center justify-center gap-1 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Mail className="w-4 h-4" />
+                {sendingClientEmail ? 'Sending…' : 'Send Email to Client'}
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Email will include this RMA&apos;s shipment/docket details (carrier and tracking numbers) from the fields below.
+            </p>
           </div>
 
           <div>

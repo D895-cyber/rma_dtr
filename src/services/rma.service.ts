@@ -82,6 +82,11 @@ export const rmaService = {
   }) {
     return await api.post<{ case: RMACase }>(`/rma/${id}/tracking`, data);
   },
+
+  // Send RMA docket email to client
+  async emailClient(id: string, data: { email: string; clientName?: string }) {
+    return await api.post(`/rma/${id}/email-client`, data);
+  },
 };
 
 export default rmaService;

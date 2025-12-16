@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp, Calendar, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp, Calendar, X, CheckSquare, Square, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useRMACases } from '../hooks/useAPI';
 import { RMAForm } from './RMAForm';
 import { RMADetail } from './RMADetail';
@@ -19,6 +21,55 @@ export function RMAList({ currentUser }: RMAListProps) {
   const [yearFilter, setYearFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  
+  // Export dialog state
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportDateFrom, setExportDateFrom] = useState<string>('');
+  const [exportDateTo, setExportDateTo] = useState<string>('');
+  
+  // Available fields for export with their keys and labels
+  const exportFields = [
+    { key: 'rmaNumber', label: 'RMA #' },
+    { key: 'callLogNumber', label: 'Call Log #' },
+    { key: 'rmaOrderNumber', label: 'Order #' },
+    { key: 'rmaType', label: 'Type' },
+    { key: 'rmaRaisedDate', label: 'Raised Date' },
+    { key: 'customerErrorDate', label: 'Error Date' },
+    { key: 'site', label: 'Site' },
+    { key: 'audiNo', label: 'Audi No' },
+    { key: 'productName', label: 'Product' },
+    { key: 'productPartNumber', label: 'Product Part Number' },
+    { key: 'serialNumber', label: 'Serial #' },
+    { key: 'defectivePartName', label: 'Defective Part Name' },
+    { key: 'defectivePartNumber', label: 'Defective Part Number' },
+    { key: 'defectivePartSerial', label: 'Defective Part Serial' },
+    { key: 'returnTrackingNumber', label: 'Return Tracking' },
+    { key: 'returnShippedThrough', label: 'Return Carrier' },
+    { key: 'returnShippedDate', label: 'Return Shipped Date' },
+    { key: 'replacedPartNumber', label: 'Replacement Part Number' },
+    { key: 'replacedPartSerial', label: 'Replacement Part Serial' },
+    { key: 'trackingNumberOut', label: 'Out Tracking' },
+    { key: 'shippingCarrier', label: 'Shipping Carrier' },
+    { key: 'shippedDate', label: 'Shipped Date' },
+    { key: 'status', label: 'Status' },
+    { key: 'createdBy', label: 'Created By' },
+    { key: 'assignedTo', label: 'Assigned To' },
+    { key: 'symptoms', label: 'Symptoms' },
+    { key: 'defectDetails', label: 'Defect Details' },
+    { key: 'isDefectivePartDNR', label: 'DNR (Do Not Return)' },
+    { key: 'defectivePartDNRReason', label: 'DNR Reason' },
+    { key: 'notes', label: 'Notes' },
+  ];
+  
+  // State for selected export fields (default: all selected)
+  const [selectedExportFields, setSelectedExportFields] = useState<Set<string>>(
+    new Set(exportFields.map(f => f.key))
+  );
+
+  // Debug: Log when dialog state changes
+  useEffect(() => {
+    console.log('showExportDialog state changed:', showExportDialog);
+  }, [showExportDialog]);
 
   // Helper function to format date for display
   const formatDate = (dateStr: string | null | undefined): string => {
@@ -118,13 +169,14 @@ export function RMAList({ currentUser }: RMAListProps) {
   };
 
   // Available years (from data)
-  const availableYears = Array.from(
+  const availableYears: number[] = Array.from(
     new Set(
       rmaCases
         .map(r => getYearFromDate(r.rmaRaisedDate))
         .filter((y): y is number => y !== null)
     )
-  ).sort((a, b) => b - a);
+  );
+  availableYears.sort((a, b) => b - a);
 
   // Apply date range filter first (takes precedence over year filter)
   const dateRangeFilteredCases = (dateFrom || dateTo)
@@ -240,38 +292,301 @@ export function RMAList({ currentUser }: RMAListProps) {
     setDateTo('');
   };
 
+  // Toggle export field selection
+  const toggleExportField = (fieldKey: string) => {
+    const newSelected = new Set(selectedExportFields);
+    if (newSelected.has(fieldKey)) {
+      newSelected.delete(fieldKey);
+    } else {
+      newSelected.add(fieldKey);
+    }
+    setSelectedExportFields(newSelected);
+  };
+
+  // Select all / deselect all export fields
+  const toggleAllExportFields = (selectAll: boolean) => {
+    if (selectAll) {
+      setSelectedExportFields(new Set(exportFields.map(f => f.key)));
+    } else {
+      setSelectedExportFields(new Set());
+    }
+  };
+
+  // Get field value for export
+  const getFieldValue = (rma: any, fieldKey: string): string => {
+    switch (fieldKey) {
+      case 'rmaNumber':
+        return rma.rmaNumber || '-';
+      case 'callLogNumber':
+        return rma.callLogNumber || '-';
+      case 'rmaOrderNumber':
+        return rma.rmaOrderNumber || '-';
+      case 'rmaType':
+        return rma.rmaType || '-';
+      case 'rmaRaisedDate':
+        return formatDateForCSV(rma.rmaRaisedDate);
+      case 'customerErrorDate':
+        return formatDateForCSV(rma.customerErrorDate);
+      case 'site':
+        return getSiteName(rma.site || rma.siteName) || '-';
+      case 'audiNo':
+        return rma.audi?.audiNo || rma.audiNo || '-';
+      case 'productName':
+        return rma.productName || '-';
+      case 'productPartNumber':
+        return rma.productPartNumber || '-';
+      case 'serialNumber':
+        return rma.serialNumber || '-';
+      case 'defectivePartName':
+        return rma.defectivePartName || '-';
+      case 'defectivePartNumber':
+        return rma.defectivePartNumber || '-';
+      case 'defectivePartSerial':
+        return rma.defectivePartSerial || '-';
+      case 'returnTrackingNumber':
+        return rma.returnTrackingNumber || '-';
+      case 'returnShippedThrough':
+        return rma.returnShippedThrough || '-';
+      case 'returnShippedDate':
+        return formatDateForCSV(rma.returnShippedDate);
+      case 'replacedPartNumber':
+        return rma.replacedPartNumber || '-';
+      case 'replacedPartSerial':
+        return rma.replacedPartSerial || '-';
+      case 'trackingNumberOut':
+        return rma.trackingNumberOut || '-';
+      case 'shippingCarrier':
+        return rma.shippingCarrier || '-';
+      case 'shippedDate':
+        return formatDateForCSV(rma.shippedDate);
+      case 'status':
+        return rma.status || '-';
+      case 'createdBy':
+        return getUserName(rma.creator || rma.createdBy);
+      case 'assignedTo':
+        return getUserName(rma.assignee || rma.assignedTo) || '-';
+      case 'symptoms':
+        return rma.symptoms || '-';
+      case 'defectDetails':
+        return rma.defectDetails || '-';
+      case 'isDefectivePartDNR':
+        return rma.isDefectivePartDNR ? 'Yes' : 'No';
+      case 'defectivePartDNRReason':
+        return rma.defectivePartDNRReason || '-';
+      case 'notes':
+        return rma.notes || '-';
+      default:
+        return '-';
+    }
+  };
+
+  // Handle export with selected fields and date range
   const handleExport = () => {
-    const csv = [
-      ['RMA #', 'Call Log #', 'Order #', 'Type', 'Raised Date', 'Error Date', 'Site', 'Audi No', 'Product', 'Serial #', 'Defective Part', 'Defective Serial', 'Return Tracking', 'Replacement Part', 'Replacement Serial', 'Out Tracking', 'Status', 'Created By', 'Assigned To'].join(','),
-      ...filteredCases.map(rma => [
-        escapeCsvValue(rma.rmaNumber || '-'),
-        escapeCsvValue(rma.callLogNumber || '-'),
-        escapeCsvValue(rma.rmaOrderNumber || '-'),
-        escapeCsvValue(rma.rmaType),
-        formatDateForCSV(rma.rmaRaisedDate), // Use CSV-safe date format
-        formatDateForCSV(rma.customerErrorDate), // Use CSV-safe date format
-        escapeCsvValue(getSiteName(rma.site || rma.siteName) || '-'),
-        escapeCsvValue(rma.audi?.audiNo || rma.audiNo || '-'),
-        escapeCsvValue(rma.productName || '-'),
-        escapeCsvValue(rma.serialNumber || '-'),
-        escapeCsvValue(rma.defectivePartName || '-'),
-        escapeCsvValue(rma.defectivePartSerial || '-'),
-        escapeCsvValue(rma.returnTrackingNumber || '-'),
-        escapeCsvValue(rma.replacedPartNumber || '-'),
-        escapeCsvValue(rma.replacedPartSerial || '-'),
-        escapeCsvValue(rma.trackingNumberOut || '-'),
-        escapeCsvValue(rma.status),
-        escapeCsvValue(getUserName(rma.creator || rma.createdBy)),
-        escapeCsvValue(getUserName(rma.assignee || rma.assignedTo) || '-'),
-      ].join(','))
-    ].join('\n');
-    
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `rma-cases-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
+    try {
+      // Check if at least one field is selected
+      if (selectedExportFields.size === 0) {
+        alert('Please select at least one field to export.');
+        return;
+      }
+
+      // Filter cases by export date range if set
+      let casesToExport = rmaCases;
+      if (exportDateFrom || exportDateTo) {
+        casesToExport = rmaCases.filter(r => isDateInRange(r.rmaRaisedDate, exportDateFrom, exportDateTo));
+      }
+
+      if (casesToExport.length === 0) {
+        alert('No cases found matching the selected criteria.');
+        return;
+      }
+
+      // Get selected fields in order
+      const selectedFields = exportFields.filter(f => selectedExportFields.has(f.key));
+      
+      // Build CSV header
+      const headers = selectedFields.map(f => f.label);
+      
+      // Build CSV rows
+      const rows = casesToExport.map(rma => {
+        return selectedFields.map(f => escapeCsvValue(getFieldValue(rma, f.key)));
+      });
+
+      // Combine header and rows
+      const csv = [
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+      ].join('\n');
+      
+      // Generate filename with date range if applicable
+      let filename = `rma-cases-${new Date().toISOString().split('T')[0]}`;
+      if (exportDateFrom || exportDateTo) {
+        const fromStr = exportDateFrom ? exportDateFrom.replace(/-/g, '') : 'all';
+        const toStr = exportDateTo ? exportDateTo.replace(/-/g, '') : 'all';
+        filename += `-${fromStr}-to-${toStr}`;
+      }
+      filename += '.csv';
+      
+      // Create and download CSV
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      // Close dialog after export
+      setShowExportDialog(false);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export CSV. Please check the console for details.');
+    }
+  };
+
+  // Handle export date range changes
+  const handleExportDateFromChange = (value: string) => {
+    setExportDateFrom(value);
+    if (value && exportDateTo && new Date(value) > new Date(exportDateTo)) {
+      setExportDateTo('');
+    }
+  };
+
+  const handleExportDateToChange = (value: string) => {
+    if (value && exportDateFrom && new Date(value) < new Date(exportDateFrom)) {
+      alert('To Date must be after or equal to From Date');
+      return;
+    }
+    setExportDateTo(value);
+  };
+
+  // Get overdue RMA cases (30+ days in transit)
+  const getOverdueRMAs = (minDays: number = 30) => {
+    return rmaCases.filter(rma => {
+      // Must be in "faulty_in_transit_to_cds" status
+      if (rma.status !== 'faulty_in_transit_to_cds') return false;
+      
+      // Must have a shipped date
+      if (!rma.shippedDate) return false;
+      
+      // Calculate days since shipped
+      const shipped = new Date(rma.shippedDate);
+      if (Number.isNaN(shipped.getTime())) return false;
+      
+      const diffMs = Date.now() - shipped.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
+      return diffDays >= minDays;
+    });
+  };
+
+  // Export overdue RMAs to Excel
+  const handleExportOverdueToExcel = () => {
+    try {
+      const overdueCases = getOverdueRMAs(30);
+      
+      if (overdueCases.length === 0) {
+        alert('No overdue RMA cases found (30+ days in transit).');
+        return;
+      }
+
+      // Prepare data for Excel with all details
+      const excelData = overdueCases.map(rma => {
+        const shipped = rma.shippedDate ? new Date(rma.shippedDate) : null;
+        const daysOverdue = shipped && !Number.isNaN(shipped.getTime())
+          ? Math.floor((Date.now() - shipped.getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+
+        return {
+          'RMA Number': rma.rmaNumber || '-',
+          'Call Log Number': rma.callLogNumber || '-',
+          'RMA Order Number': rma.rmaOrderNumber || '-',
+          'RMA Type': rma.rmaType || '-',
+          'RMA Raised Date': rma.rmaRaisedDate ? formatDateForCSV(rma.rmaRaisedDate) : '-',
+          'Customer Error Date': rma.customerErrorDate ? formatDateForCSV(rma.customerErrorDate) : '-',
+          'Site Name': getSiteName(rma.site || rma.siteName) || '-',
+          'Audi Number': rma.audi?.audiNo || rma.audiNo || '-',
+          'Product Name': rma.productName || '-',
+          'Product Part Number': rma.productPartNumber || '-',
+          'Serial Number': rma.serialNumber || '-',
+          'Defect Details': rma.defectDetails || '-',
+          'Symptoms': rma.symptoms || '-',
+          'Defective Part Name': rma.defectivePartName || '-',
+          'Defective Part Number': rma.defectivePartNumber || '-',
+          'Defective Part Serial': rma.defectivePartSerial || '-',
+          'Is DNR': rma.isDefectivePartDNR ? 'Yes' : 'No',
+          'DNR Reason': rma.defectivePartDNRReason || '-',
+          'Replacement Part Number': rma.replacedPartNumber || '-',
+          'Replacement Part Serial': rma.replacedPartSerial || '-',
+          'Shipping Carrier': rma.shippingCarrier || '-',
+          'Tracking Number (Outbound)': rma.trackingNumberOut || '-',
+          'Shipped Date': rma.shippedDate ? formatDateForCSV(rma.shippedDate) : '-',
+          'Days Overdue': daysOverdue,
+          'Return Shipped Through': rma.returnShippedThrough || '-',
+          'Return Tracking Number': rma.returnTrackingNumber || '-',
+          'Return Shipped Date': rma.returnShippedDate ? formatDateForCSV(rma.returnShippedDate) : '-',
+          'Status': rma.status || '-',
+          'Created By': getUserName(rma.creator || rma.createdBy),
+          'Assigned To': getUserName(rma.assignee || rma.assignedTo) || '-',
+          'Notes': rma.notes || '-',
+        };
+      });
+
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+
+      // Set column widths for better readability
+      const colWidths = [
+        { wch: 15 }, // RMA Number
+        { wch: 15 }, // Call Log Number
+        { wch: 15 }, // RMA Order Number
+        { wch: 12 }, // RMA Type
+        { wch: 12 }, // RMA Raised Date
+        { wch: 12 }, // Customer Error Date
+        { wch: 25 }, // Site Name
+        { wch: 12 }, // Audi Number
+        { wch: 20 }, // Product Name
+        { wch: 18 }, // Product Part Number
+        { wch: 15 }, // Serial Number
+        { wch: 30 }, // Defect Details
+        { wch: 30 }, // Symptoms
+        { wch: 20 }, // Defective Part Name
+        { wch: 18 }, // Defective Part Number
+        { wch: 18 }, // Defective Part Serial
+        { wch: 8 },  // Is DNR
+        { wch: 30 }, // DNR Reason
+        { wch: 20 }, // Replacement Part Number
+        { wch: 18 }, // Replacement Part Serial
+        { wch: 15 }, // Shipping Carrier
+        { wch: 20 }, // Tracking Number (Outbound)
+        { wch: 12 }, // Shipped Date
+        { wch: 12 }, // Days Overdue
+        { wch: 18 }, // Return Shipped Through
+        { wch: 20 }, // Return Tracking Number
+        { wch: 12 }, // Return Shipped Date
+        { wch: 15 }, // Status
+        { wch: 15 }, // Created By
+        { wch: 15 }, // Assigned To
+        { wch: 30 }, // Notes
+      ];
+      ws['!cols'] = colWidths;
+
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Overdue RMAs');
+
+      // Generate filename with current date
+      const filename = `overdue-rma-cases-${new Date().toISOString().split('T')[0]}.xlsx`;
+
+      // Write file
+      XLSX.writeFile(wb, filename);
+
+      alert(`Exported ${overdueCases.length} overdue RMA case(s) to Excel successfully!`);
+    } catch (error) {
+      console.error('Export overdue RMAs error:', error);
+      alert('Failed to export overdue RMAs to Excel. Please check the console for details.');
+    }
   };
 
   // Loading state
@@ -589,13 +904,27 @@ export function RMAList({ currentUser }: RMAListProps) {
               </p>
             )}
           </div>
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportOverdueToExcel}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-red-700 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors border border-red-200"
+              title="Export overdue RMAs (30+ days in transit) to Excel"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Export Overdue (Excel)
+            </button>
+            <button
+              onClick={() => {
+                console.log('Export button clicked, setting showExportDialog to true');
+                setShowExportDialog(true);
+                console.log('Dialog state should be true now');
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </button>
+          </div>
         </div>
       </div>
 
@@ -790,6 +1119,159 @@ export function RMAList({ currentUser }: RMAListProps) {
           </table>
         </div>
       </div>
+
+      {/* Export Dialog - Using Portal to ensure it renders on top */}
+      {showExportDialog && createPortal(
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" 
+          style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0,
+            zIndex: 9999
+          }}
+          onClick={(e) => {
+            // Close dialog when clicking backdrop
+            if (e.target === e.currentTarget) {
+              setShowExportDialog(false);
+            }
+          }}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Export CSV</h3>
+                <p className="text-sm text-gray-600 mt-1">Select fields and date range for export</p>
+              </div>
+              <button
+                onClick={() => setShowExportDialog(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Date Range Section */}
+              <div className="mb-6 pb-6 border-b border-gray-200">
+                <div className="flex items-center gap-2 mb-4">
+                  <Calendar className="w-4 h-4 text-gray-500" />
+                  <label className="text-sm font-medium text-gray-700">Filter by Date Range (RMA Raised Date)</label>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">From Date (Optional)</label>
+                    <input
+                      type="date"
+                      value={exportDateFrom}
+                      onChange={(e) => handleExportDateFromChange(e.target.value)}
+                      max={exportDateTo || undefined}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">To Date (Optional)</label>
+                    <input
+                      type="date"
+                      value={exportDateTo}
+                      onChange={(e) => handleExportDateToChange(e.target.value)}
+                      min={exportDateFrom || undefined}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                {exportDateFrom || exportDateTo ? (
+                  <p className="text-xs text-blue-600 mt-2">
+                    Exporting cases from {exportDateFrom ? formatDate(exportDateFrom) : 'any start'} to {exportDateTo ? formatDate(exportDateTo) : 'any end'}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-500 mt-2">Leave blank to export all cases</p>
+                )}
+              </div>
+
+              {/* Field Selection Section */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <CheckSquare className="w-4 h-4 text-gray-500" />
+                    <label className="text-sm font-medium text-gray-700">Select Fields to Export</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => toggleAllExportFields(true)}
+                      className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded transition-colors"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                      onClick={() => toggleAllExportFields(false)}
+                      className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 hover:bg-blue-50 rounded transition-colors"
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-2 border border-gray-200 rounded-lg">
+                  {exportFields.map((field) => {
+                    const isSelected = selectedExportFields.has(field.key);
+                    return (
+                      <label
+                        key={field.key}
+                        className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors"
+                      >
+                        <div className="flex-shrink-0">
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-blue-600" />
+                          ) : (
+                            <Square className="w-4 h-4 text-gray-400" />
+                          )}
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleExportField(field.key)}
+                          className="sr-only"
+                        />
+                        <span className="text-sm text-gray-700">{field.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-500 mt-3">
+                  {selectedExportFields.size} of {exportFields.length} fields selected
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+              <button
+                onClick={() => setShowExportDialog(false)}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExport}
+                disabled={selectedExportFields.size === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Export CSV
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

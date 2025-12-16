@@ -37,36 +37,57 @@ export interface AssignmentEmailPayload {
 }
 
 export async function sendAssignmentEmail(payload: AssignmentEmailPayload) {
+  console.log(`[Email] Attempting to send assignment email to ${payload.to} for ${payload.caseType} case ${payload.caseNumber}`);
+  
   if (!emailEnabled || !transporter) {
-    console.warn('Email not sent: Gmail OAuth2 env vars not configured');
+    console.warn('[Email] Email not sent: Gmail OAuth2 env vars not configured');
+    console.warn('[Email] Check if GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET, GMAIL_OAUTH_REFRESH_TOKEN, and GMAIL_OAUTH_USER are set');
     return;
   }
 
-  const subject = `[${payload.caseType}] New Case Assigned - #${payload.caseNumber}`;
-  const greetingName = payload.engineerName || 'Engineer';
+  if (!payload.to || !payload.to.includes('@')) {
+    console.error(`[Email] Invalid email address: ${payload.to}`);
+    throw new Error(`Invalid email address: ${payload.to}`);
+  }
 
-  const textLines = [
-    `Hi ${greetingName},`,
-    '',
-    `You have been assigned a new ${payload.caseType} case.`,
-    `Case Number: ${payload.caseNumber}`,
-    payload.createdBy ? `Created By: ${payload.createdBy}` : '',
-    payload.link ? `Link: ${payload.link}` : '',
-    '',
-    'Please log into the CRM to view full details.',
-  ].filter(Boolean);
+  try {
+    const subject = `[${payload.caseType}] New Case Assigned - #${payload.caseNumber}`;
+    const greetingName = payload.engineerName || 'Engineer';
 
-  const html = textLines
-    .map((line) => (line === '' ? '<br />' : `<p>${line}</p>`))
-    .join('\n');
+    const textLines = [
+      `Hi ${greetingName},`,
+      '',
+      `You have been assigned a new ${payload.caseType} case.`,
+      `Case Number: ${payload.caseNumber}`,
+      payload.createdBy ? `Created By: ${payload.createdBy}` : '',
+      payload.link ? `Link: ${payload.link}` : '',
+      '',
+      'Please log into the CRM to view full details.',
+    ].filter(Boolean);
 
-  await transporter.sendMail({
-    from: `"CRM" <${GMAIL_OAUTH_USER}>`,
-    to: payload.to,
-    subject,
-    text: textLines.join('\n'),
-    html,
-  });
+    const html = textLines
+      .map((line) => (line === '' ? '<br />' : `<p>${line}</p>`))
+      .join('\n');
+
+    const info = await transporter.sendMail({
+      from: `"CRM" <${GMAIL_OAUTH_USER}>`,
+      to: payload.to,
+      subject,
+      text: textLines.join('\n'),
+      html,
+    });
+
+    console.log(`[Email] Assignment email sent successfully to ${payload.to}. Message ID: ${info.messageId}`);
+    return info;
+  } catch (error: any) {
+    console.error(`[Email] Failed to send assignment email to ${payload.to}:`, error);
+    console.error(`[Email] Error details:`, {
+      message: error.message,
+      code: error.code,
+      response: error.response,
+    });
+    throw error;
+  }
 }
 
 export interface RmaClientEmailPayload {

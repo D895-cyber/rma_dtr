@@ -261,13 +261,21 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
         },
       });
 
-      sendAssignmentEmail({
-        to: rmaCase.assignee.email,
-        engineerName: rmaCase.assignee.name,
-        caseType: 'RMA',
-        caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
-        createdBy: rmaCase.creator?.email,
-      }).catch((err) => console.error('RMA assignment email error:', err));
+      try {
+        await sendAssignmentEmail({
+          to: rmaCase.assignee.email,
+          engineerName: rmaCase.assignee.name,
+          caseType: 'RMA',
+          caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
+          createdBy: rmaCase.creator?.email,
+        });
+        console.log(`Assignment email sent successfully to ${rmaCase.assignee.email} for RMA ${rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A'}`);
+      } catch (err: any) {
+        console.error('RMA assignment email error:', err);
+        // Don't fail the request if email fails, but log it
+      }
+    } else if (assignedTo && !rmaCase.assignee?.email) {
+      console.warn(`RMA assignment email not sent: assignee email not found for RMA ${rmaCase.id}`);
     }
 
     return sendSuccess(res, { case: rmaCase }, 'RMA case created successfully', 201);
@@ -417,13 +425,21 @@ export async function updateRmaCase(req: AuthRequest, res: Response) {
         },
       });
 
-      sendAssignmentEmail({
-        to: rmaCase.assignee.email,
-        engineerName: rmaCase.assignee.name,
-        caseType: 'RMA',
-        caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
-        createdBy: rmaCase.creator?.email,
-      }).catch((err) => console.error('RMA reassignment email error:', err));
+      try {
+        await sendAssignmentEmail({
+          to: rmaCase.assignee.email,
+          engineerName: rmaCase.assignee.name,
+          caseType: 'RMA',
+          caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
+          createdBy: rmaCase.creator?.email,
+        });
+        console.log(`Reassignment email sent successfully to ${rmaCase.assignee.email} for RMA ${rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A'}`);
+      } catch (err: any) {
+        console.error('RMA reassignment email error:', err);
+        // Don't fail the request if email fails, but log it
+      }
+    } else if (cleanUpdateData.assignedTo && cleanUpdateData.assignedTo !== currentCase.assignedTo && !rmaCase.assignee?.email) {
+      console.warn(`RMA reassignment email not sent: assignee email not found for RMA ${rmaCase.id}`);
     }
 
     return sendSuccess(res, { case: rmaCase }, 'RMA case updated successfully');
@@ -499,14 +515,23 @@ export async function assignRmaCase(req: AuthRequest, res: Response) {
       },
     });
 
+    // Send assignment email to engineer
     if (rmaCase.assignee?.email) {
-      sendAssignmentEmail({
-        to: rmaCase.assignee.email,
-        engineerName: rmaCase.assignee.name,
-        caseType: 'RMA',
-        caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
-        createdBy: rmaCase.creator?.email,
-      }).catch((err) => console.error('RMA assign endpoint email error:', err));
+      try {
+        await sendAssignmentEmail({
+          to: rmaCase.assignee.email,
+          engineerName: rmaCase.assignee.name,
+          caseType: 'RMA',
+          caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
+          createdBy: rmaCase.creator?.email,
+        });
+        console.log(`Assignment email sent successfully to ${rmaCase.assignee.email} for RMA ${rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A'}`);
+      } catch (err: any) {
+        console.error('RMA assign endpoint email error:', err);
+        // Don't fail the request if email fails, but log it
+      }
+    } else {
+      console.warn(`RMA assignment email not sent: assignee email not found for RMA ${rmaCase.id}`);
     }
 
     return sendSuccess(res, { case: rmaCase }, 'RMA case assigned successfully');

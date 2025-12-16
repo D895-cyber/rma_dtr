@@ -16,6 +16,7 @@
     "import:bulk": "ts-node scripts/bulk-import.ts",
     "clear:data": "ts-node scripts/clear-data.ts",
     "clear:master": "ts-node scripts/clear-master-data.ts",
+    "clear:rma": "ts-node scripts/clear-rma-cases.ts",
     "create:templates": "ts-node scripts/create-excel-templates.ts",
     "remove:duplicates": "ts-node scripts/remove-duplicates.ts"
   },

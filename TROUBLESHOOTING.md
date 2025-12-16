@@ -129,3 +129,4 @@ npx prisma migrate deploy
 3. Ensure database allows external connections
 4. Check if database requires SSL connections
 
+

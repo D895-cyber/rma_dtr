@@ -37,16 +37,76 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
   
   const [isEditing, setIsEditing] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
+  // Track original DNR value to detect changes
+  const originalDNRValue = rma.isDefectivePartDNR === true || rma.isDefectivePartDNR === 'true' || false;
+  // Track original assignment value
+  const originalAssignedTo = rma.assignee?.email || rma.assignedTo || '';
   const [formData, setFormData] = useState({
     ...rma,
     // Ensure siteId and audiId are extracted from nested objects
     siteId: rma.siteId || (typeof rma.site === 'object' && rma.site ? rma.site.id : ''),
     audiId: rma.audiId || (typeof rma.audi === 'object' && rma.audi ? rma.audi.id : undefined),
+    // Ensure siteName is populated from nested site object when not provided
+    siteName:
+      (rma as any).siteName ||
+      (typeof rma.site === 'object' && rma.site && (rma.site as any).siteName
+        ? (rma.site as any).siteName
+        : ''),
     rmaRaisedDate: formatDateForInput(rma.rmaRaisedDate),
     customerErrorDate: formatDateForInput(rma.customerErrorDate),
     shippedDate: formatDateForInput(rma.shippedDate),
     returnShippedDate: formatDateForInput(rma.returnShippedDate),
+    // Ensure isDefectivePartDNR is explicitly set as boolean
+    isDefectivePartDNR: originalDNRValue,
+    // Ensure assignedTo is set from nested assignee object if needed
+    assignedTo: originalAssignedTo,
   });
+  
+  // Check if DNR value has changed from original
+  const originalDNRReason = rma.defectivePartDNRReason || '';
+  const currentDNRReason = formData.defectivePartDNRReason || '';
+  const dnrHasChanged = formData.isDefectivePartDNR !== originalDNRValue || 
+    (formData.isDefectivePartDNR && currentDNRReason !== originalDNRReason);
+  
+  // Check if assignment has changed from original
+  const currentAssignedTo = formData.assignedTo || '';
+  const assignmentHasChanged = currentAssignedTo !== originalAssignedTo;
+
+  // Quick save function for DNR status only
+  const handleSaveDNR = async () => {
+    // Validate: if DNR is checked, reason is required
+    if (formData.isDefectivePartDNR && !formData.defectivePartDNRReason?.trim()) {
+      alert('Please provide a DNR reason before saving.');
+      return;
+    }
+    
+    const dnrUpdate: any = {
+      isDefectivePartDNR: formData.isDefectivePartDNR === true,
+    };
+    
+    // If DNR is checked, include the reason
+    if (formData.isDefectivePartDNR) {
+      dnrUpdate.defectivePartDNRReason = formData.defectivePartDNRReason?.trim() || null;
+    } else {
+      // If DNR is unchecked, clear the reason
+      dnrUpdate.defectivePartDNRReason = null;
+    }
+    
+    onUpdate(rma.id, dnrUpdate, currentUser.email, 'DNR Status Updated', 
+      `DNR status changed to ${formData.isDefectivePartDNR ? 'enabled' : 'disabled'}`);
+  };
+
+  // Quick save function for assignment only
+  const handleSaveAssignment = async () => {
+    const assignmentUpdate: any = {
+      assignedTo: formData.assignedTo || null,
+    };
+    
+    const assignedToName = engineers.find(e => e.email === formData.assignedTo)?.name || formData.assignedTo || 'Unassigned';
+    
+    onUpdate(rma.id, assignmentUpdate, currentUser.email, 'Assignment Updated', 
+      `Case assigned to ${assignedToName}`);
+  };
 
   const handleUpdate = () => {
     // Clean up formData before sending - remove nested objects
@@ -68,6 +128,14 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
     }
     if (!cleanData.audiId && formData.audi && typeof formData.audi === 'object') {
       cleanData.audiId = formData.audi.id;
+    }
+
+    // Explicitly ensure isDefectivePartDNR is a boolean (not undefined)
+    cleanData.isDefectivePartDNR = formData.isDefectivePartDNR === true || formData.isDefectivePartDNR === 'true' || false;
+    
+    // If DNR is unchecked, clear the DNR reason
+    if (!cleanData.isDefectivePartDNR) {
+      cleanData.defectivePartDNRReason = null;
     }
 
     onUpdate(rma.id, cleanData, currentUser.email, 'Updated', 'RMA case details updated');
@@ -338,7 +406,7 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
 
           <div className="md:col-span-2">
             <label className="block text-sm text-gray-700 mb-2">Assigned To Engineer</label>
-            {isEditing ? (
+            <div className="space-y-2">
               <select
                 value={formData.assignedTo || ''}
                 onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
@@ -351,11 +419,30 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
                   </option>
                 ))}
               </select>
-            ) : (
-              <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">
-                {formData.assignedTo || 'Unassigned'}
-              </p>
-            )}
+              {/* Save button appears when assignment changes */}
+              {assignmentHasChanged && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSaveAssignment}
+                    className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
+                  >
+                    <Check className="w-4 h-4" />
+                    Save Assignment
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        assignedTo: originalAssignedTo,
+                      });
+                    }}
+                    className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -492,18 +579,49 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
               <input
                 type="checkbox"
                 id="isDefectivePartDNR"
-                checked={formData.isDefectivePartDNR || false}
-                onChange={(e) => setFormData({ ...formData, isDefectivePartDNR: e.target.checked })}
-                disabled={!isEditing}
-                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                checked={formData.isDefectivePartDNR === true}
+                onChange={(e) => {
+                  const newValue = e.target.checked;
+                  setFormData({ 
+                    ...formData, 
+                    isDefectivePartDNR: newValue,
+                    // Clear DNR reason if unchecking
+                    defectivePartDNRReason: newValue ? formData.defectivePartDNRReason : ''
+                  });
+                }}
+                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
               />
               <div className="flex-1">
-                <label htmlFor="isDefectivePartDNR" className="block text-sm font-medium text-gray-900">
+                <label htmlFor="isDefectivePartDNR" className="block text-sm font-medium text-gray-900 cursor-pointer">
                   DNR - Do Not Return (Defective part will NOT be returned to OEM)
                 </label>
                 <p className="text-xs text-gray-600 mt-1">
                   Check this if the defective part is damaged beyond repair, disposed at site, or should not be returned to the manufacturer.
                 </p>
+                {/* Save button appears when DNR value changes */}
+                {dnrHasChanged && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      onClick={handleSaveDNR}
+                      className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
+                    >
+                      <Check className="w-4 h-4" />
+                      Save DNR Status
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          isDefectivePartDNR: originalDNRValue,
+                          defectivePartDNRReason: originalDNRReason,
+                        });
+                      }}
+                      className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -511,15 +629,15 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
           {formData.isDefectivePartDNR && (
             <div className="md:col-span-2">
               <label className="block text-sm text-gray-700 mb-2">
-                DNR Reason
+                DNR Reason <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={formData.defectivePartDNRReason || ''}
                 onChange={(e) => setFormData({ ...formData, defectivePartDNRReason: e.target.value })}
-                disabled={!isEditing}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 rows={2}
-                placeholder="Explain why the defective part will not be returned..."
+                placeholder="Explain why the defective part will not be returned (e.g., Part damaged beyond repair and disposed at site per safety protocol)..."
+                required
               />
             </div>
           )}

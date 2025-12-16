@@ -43,94 +43,133 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
       prisma.rmaCase.count({ where: { assignedTo: userId } }),
     ]);
 
-    // Severity breakdown
+    // Severity breakdown (DTR)
     const severityBreakdown = await prisma.dtrCase.groupBy({
       by: ['caseSeverity'],
       _count: true,
     });
 
-    // Recent cases (last 7 days)
+    // Recent window (last 7 days)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const recentDtrCases = await prisma.dtrCase.count({
-      where: {
-        createdAt: { gte: sevenDaysAgo },
-      },
-    });
-
-    const recentRmaCases = await prisma.rmaCase.count({
-      where: {
-        createdAt: { gte: sevenDaysAgo },
-      },
-    });
+    const [recentDtrCases, recentRmaCases] = await Promise.all([
+      prisma.dtrCase.count({
+        where: {
+          createdAt: { gte: sevenDaysAgo },
+        },
+      }),
+      prisma.rmaCase.count({
+        where: {
+          createdAt: { gte: sevenDaysAgo },
+        },
+      }),
+    ]);
 
     // Get recent case objects (last 5) for dashboard display
-    const recentDtrCasesList = await prisma.dtrCase.findMany({
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        site: true,
-        audi: {
-          include: {
-            projector: {
-              include: {
-                projectorModel: true,
+    const [recentDtrCasesList, recentRmaCasesList] = await Promise.all([
+      prisma.dtrCase.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          site: true,
+          audi: {
+            include: {
+              projector: {
+                include: {
+                  projectorModel: true,
+                },
               },
             },
           },
-        },
-        creator: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          assignee: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
           },
         },
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
+      }),
+      prisma.rmaCase.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          site: true,
+          audi: {
+            include: {
+              projector: {
+                include: {
+                  projectorModel: true,
+                },
+              },
+            },
+          },
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          assignee: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
           },
         },
-      },
-    });
+      }),
+    ]);
 
-    const recentRmaCasesList = await prisma.rmaCase.findMany({
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        site: true,
-        audi: {
-          include: {
-            projector: {
-              include: {
-                projectorModel: true,
+    // Overdue RMA: status faulty_in_transit_to_cds and shippedDate older than 30 days
+    const overdueThreshold = new Date();
+    overdueThreshold.setDate(overdueThreshold.getDate() - 30);
+
+    const [overdueRmaCount, overdueRmaCasesList] = await Promise.all([
+      prisma.rmaCase.count({
+        where: {
+          status: 'faulty_in_transit_to_cds',
+          shippedDate: {
+            lt: overdueThreshold,
+          },
+        },
+      }),
+      prisma.rmaCase.findMany({
+        where: {
+          status: 'faulty_in_transit_to_cds',
+          shippedDate: {
+            lt: overdueThreshold,
+          },
+        },
+        orderBy: { shippedDate: 'asc' },
+        take: 5,
+        include: {
+          site: true,
+          audi: {
+            include: {
+              projector: {
+                include: {
+                  projectorModel: true,
+                },
               },
             },
           },
         },
-        creator: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
-      },
-    });
+      }),
+    ]);
 
     return sendSuccess(res, {
       dtr: {
@@ -152,6 +191,8 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
         myAssigned: myAssignedRmaCases,
         recent: recentRmaCases,
         recentCases: recentRmaCasesList,
+        overdue: overdueRmaCount,
+        overdueCases: overdueRmaCasesList,
       },
       severity: severityBreakdown.reduce((acc, item) => {
         acc[item.caseSeverity] = item._count;

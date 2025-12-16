@@ -21,11 +21,32 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     return site.siteName || 'Unknown';
   };
 
-  // Calculate days between dates
-  const daysBetween = (date1: string, date2: string): number => {
-    const d1 = new Date(date1);
-    const d2 = new Date(date2);
-    return Math.floor((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+  // Calculate days between dates (validates dates and ensures correct order)
+  const daysBetween = (date1: string | null | undefined, date2: string | null | undefined): number | null => {
+    if (!date1 || !date2) return null;
+    
+    try {
+      const d1 = new Date(date1);
+      const d2 = new Date(date2);
+      
+      // Check if dates are valid
+      if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
+        return null;
+      }
+      
+      // Calculate difference in days
+      const diffMs = d2.getTime() - d1.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
+      // Return null if date2 is before date1 (invalid order)
+      if (diffDays < 0) {
+        return null;
+      }
+      
+      return diffDays;
+    } catch {
+      return null;
+    }
   };
 
   // Get current date
@@ -98,24 +119,37 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     .slice(0, 5);
 
   // Turnaround time for closed RMAs
-  const closedRMAs = rmaCases.filter(r => r.status === 'closed' && r.shippedDate);
-  const avgShippingTime = closedRMAs.length > 0
+  // Only calculate for RMAs with valid date pairs (rmaRaisedDate before shippedDate)
+  const closedRMAsWithValidDates = rmaCases.filter(r => {
+    if (r.status !== 'closed' || !r.shippedDate || !r.rmaRaisedDate) return false;
+    const days = daysBetween(r.rmaRaisedDate, r.shippedDate);
+    return days !== null && days >= 0; // Only include valid, positive day differences
+  });
+  
+  const avgShippingTime = closedRMAsWithValidDates.length > 0
     ? Math.round(
-        closedRMAs.reduce((sum, rma) => {
-          return sum + daysBetween(rma.rmaRaisedDate, rma.shippedDate!);
-        }, 0) / closedRMAs.length
+        closedRMAsWithValidDates.reduce((sum, rma) => {
+          const days = daysBetween(rma.rmaRaisedDate, rma.shippedDate!);
+          return sum + (days || 0);
+        }, 0) / closedRMAsWithValidDates.length
       )
-    : 0;
+    : null; // null means no valid data
 
-  const avgReturnTime = closedRMAs.filter(r => r.returnShippedDate).length > 0
+  // Average return time - only for valid date pairs (shippedDate before returnShippedDate)
+  const closedRMAsWithValidReturnDates = rmaCases.filter(r => {
+    if (r.status !== 'closed' || !r.shippedDate || !r.returnShippedDate) return false;
+    const days = daysBetween(r.shippedDate, r.returnShippedDate);
+    return days !== null && days >= 0; // Only include valid, positive day differences
+  });
+  
+  const avgReturnTime = closedRMAsWithValidReturnDates.length > 0
     ? Math.round(
-        closedRMAs
-          .filter(r => r.returnShippedDate)
-          .reduce((sum, rma) => {
-            return sum + daysBetween(rma.shippedDate!, rma.returnShippedDate!);
-          }, 0) / closedRMAs.filter(r => r.returnShippedDate).length
+        closedRMAsWithValidReturnDates.reduce((sum, rma) => {
+          const days = daysBetween(rma.shippedDate!, rma.returnShippedDate!);
+          return sum + (days || 0);
+        }, 0) / closedRMAsWithValidReturnDates.length
       )
-    : 0;
+    : null; // null means no valid data
 
   // Defective vs Replaced parts
   const defectivePartTypes = rmaCases.reduce((acc, rma) => {
@@ -154,8 +188,8 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       ['Total RMA Cases', totalRMA],
       ['Pending RMAs', rmaCases.filter(r => r.status === 'pending').length],
       ['Completed RMAs', rmaCases.filter(r => r.status === 'completed').length],
-      ['Average Shipping Time (days)', avgShippingTime],
-      ['Average Return Time (days)', avgReturnTime],
+      ['Average Shipping Time (days)', avgShippingTime !== null ? avgShippingTime : 'No data'],
+      ['Average Return Time (days)', avgReturnTime !== null ? avgReturnTime : 'No data'],
       [],
       ['Overdue Cases'],
       ['Replacement Parts Not Shipped (30+ days)', overdueReplacementShipping.length],
@@ -300,13 +334,31 @@ export function Analytics({ currentUser }: AnalyticsProps) {
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <p className="text-sm text-gray-600 mb-2">Avg Shipping Time</p>
-          <p className="text-green-600">{avgShippingTime} days</p>
-          <p className="text-xs text-gray-500 mt-2">RMA raised to shipped</p>
+          {avgShippingTime !== null ? (
+            <>
+              <p className="text-green-600 font-semibold">{avgShippingTime} days</p>
+              <p className="text-xs text-gray-500 mt-2">RMA raised to shipped</p>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-400 font-semibold">No data</p>
+              <p className="text-xs text-gray-500 mt-2">Insufficient valid date data</p>
+            </>
+          )}
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <p className="text-sm text-gray-600 mb-2">Avg Return Time</p>
-          <p className="text-orange-600">{avgReturnTime} days</p>
-          <p className="text-xs text-gray-500 mt-2">Shipped to returned</p>
+          {avgReturnTime !== null ? (
+            <>
+              <p className="text-orange-600 font-semibold">{avgReturnTime} days</p>
+              <p className="text-xs text-gray-500 mt-2">Shipped to returned</p>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-400 font-semibold">No data</p>
+              <p className="text-xs text-gray-500 mt-2">Insufficient valid date data</p>
+            </>
+          )}
         </div>
       </div>
 

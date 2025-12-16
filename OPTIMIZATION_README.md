@@ -551,3 +551,4 @@ rm -rf node_modules/.vite && npm run dev
 *Your CRM application is now optimized for maximum performance!* 🚀
 
 
+

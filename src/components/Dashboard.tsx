@@ -80,10 +80,12 @@ export function Dashboard({ currentUser }: DashboardProps) {
     rmaRaised: stats.rma.rmaRaisedYetToDeliver,
     inTransit: stats.rma.faultyInTransitToCds,
     closed: stats.rma.closed,
+    overdue: (stats.rma as any).overdue ?? 0,
   };
 
   const recentDTR = stats.dtr.recentCases || [];
   const recentRMA = stats.rma.recentCases || [];
+  const overdueRMA = (stats.rma as any).overdueCases || [];
 
   return (
     <div className="space-y-6">
@@ -142,7 +144,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
       {/* RMA Stats */}
       <div>
         <h3 className="text-gray-900 mb-4">RMA Overview</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-gray-600">Total RMAs</p>
@@ -173,6 +175,18 @@ export function Dashboard({ currentUser }: DashboardProps) {
               <CheckCircle className="w-5 h-5 text-green-600" />
             </div>
             <p className="text-gray-900">{rmaStats.closed}</p>
+          </div>
+
+          {/* Overdue (30+ days since shipped) */}
+          <div className="bg-white rounded-lg border border-red-200 p-6 bg-red-50">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-red-700">Overdue (30+ days)</p>
+              <AlertCircle className="w-5 h-5 text-red-600" />
+            </div>
+            <p className="text-gray-900">{rmaStats.overdue}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {rmaStats.total > 0 ? Math.round((rmaStats.overdue / rmaStats.total) * 100) : 0}% of RMAs
+            </p>
           </div>
         </div>
       </div>
@@ -217,21 +231,108 @@ export function Dashboard({ currentUser }: DashboardProps) {
               <div key={rma.id} className="px-6 py-4 hover:bg-gray-50">
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="text-sm text-gray-900">{rma.rmaNumber}</p>
-                    <p className="text-xs text-gray-600">{rma.siteName}</p>
+                    {/* Top line: RMA # or Call Log # */}
+                    <p className="text-sm text-gray-900">
+                      {rma.rmaNumber || rma.callLogNumber || 'N/A'}
+                    </p>
+                    {/* Second line: Site name (like DTR list) */}
+                    <p className="text-xs text-gray-600">
+                      {getSiteName(rma.site || (rma.siteName as any)) || '-'}
+                    </p>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    rma.status === 'completed' ? 'bg-green-100 text-green-700' :
-                    rma.status === 'in-transit' ? 'bg-blue-100 text-blue-700' :
-                    'bg-orange-100 text-orange-700'
-                  }`}>
-                    {rma.status}
+                  {/* Status badge with new RMA statuses */}
+                  <span
+                    className={`px-2 py-1 rounded text-xs ${
+                      rma.status === 'closed'
+                        ? 'bg-green-100 text-green-700'
+                        : rma.status === 'faulty_in_transit_to_cds'
+                        ? 'bg-blue-100 text-blue-700'
+                        : rma.status === 'rma_raised_yet_to_deliver'
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : rma.status === 'cancelled'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-orange-100 text-orange-700'
+                    }`}
+                  >
+                    {rma.status === 'open'
+                      ? 'Open'
+                      : rma.status === 'rma_raised_yet_to_deliver'
+                      ? 'Yet to Deliver'
+                      : rma.status === 'faulty_in_transit_to_cds'
+                      ? 'In Transit'
+                      : rma.status === 'closed'
+                      ? 'Closed'
+                      : rma.status === 'cancelled'
+                      ? 'Cancelled'
+                      : rma.status}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500">{rma.productName}</p>
+                {/* Third line: Defective part name (or product) like DTR problem text */}
+                <p className="text-xs text-gray-500">
+                  {rma.defectivePartName || rma.productName || '-'}
+                </p>
               </div>
             ))}
           </div>
+
+          {/* Overdue RMA Cases (30+ days) */}
+          {overdueRMA.length > 0 && (
+            <div className="border-t border-gray-200 mt-2 pt-2">
+              <div className="flex items-center justify-between px-6 py-3">
+                <h4 className="text-sm font-semibold text-gray-800">
+                  Overdue RMA Cases (30+ days after shipped)
+                </h4>
+                <span className="text-xs text-red-600 font-medium">
+                  {overdueRMA.length} shown
+                </span>
+              </div>
+              <div className="divide-y divide-gray-200">
+                {overdueRMA.map((rma: any) => {
+                  const shippedDate = rma.shippedDate ? new Date(rma.shippedDate) : null;
+                  const daysOverdue =
+                    shippedDate != null
+                      ? Math.floor(
+                          (Date.now() - shippedDate.getTime()) / (1000 * 60 * 60 * 24),
+                        )
+                      : null;
+
+                  return (
+                    <div key={rma.id} className="px-6 py-3 bg-red-50 hover:bg-red-100/60">
+                      <div className="flex items-start justify-between mb-1">
+                        <div>
+                          <p className="text-sm text-gray-900">
+                            {rma.rmaNumber || rma.callLogNumber || 'N/A'}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {getSiteName(rma.site)} • {rma.productName}
+                          </p>
+                          {rma.defectivePartName && (
+                            <p className="text-xs text-gray-500">
+                              Part: {rma.defectivePartName}
+                            </p>
+                          )}
+                          {shippedDate && (
+                            <p className="text-[11px] text-gray-500">
+                              Shipped:{' '}
+                              {shippedDate.toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })}{' '}
+                              {daysOverdue != null && `• ${daysOverdue} days ago`}
+                            </p>
+                          )}
+                        </div>
+                        <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-700">
+                          Overdue
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

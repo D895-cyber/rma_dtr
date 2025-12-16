@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp } from 'lucide-react';
+import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp, Calendar, X } from 'lucide-react';
 import { useRMACases } from '../hooks/useAPI';
 import { RMAForm } from './RMAForm';
 import { RMADetail } from './RMADetail';
@@ -15,6 +15,10 @@ export function RMAList({ currentUser }: RMAListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [ageFilter, setAgeFilter] = useState<string>('all'); // 'all' | '30' | '60' | '90'
+  const [yearFilter, setYearFilter] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
 
   // Helper function to format date for display
   const formatDate = (dateStr: string | null | undefined): string => {
@@ -64,33 +68,129 @@ export function RMAList({ currentUser }: RMAListProps) {
     return String(userOrEmail) || '-';
   };
 
-  // Calculate statistics
-  const rmaStats = {
-    total: rmaCases.length,
-    open: rmaCases.filter(r => r.status === 'open').length,
-    rmaRaised: rmaCases.filter(r => r.status === 'rma_raised_yet_to_deliver').length,
-    inTransit: rmaCases.filter(r => r.status === 'faulty_in_transit_to_cds').length,
-    closed: rmaCases.filter(r => r.status === 'closed').length,
-    cancelled: rmaCases.filter(r => r.status === 'cancelled').length,
-    dnr: rmaCases.filter(r => r.isDefectivePartDNR === true).length,
-    // Type breakdown
-    rmaType: rmaCases.filter(r => r.rmaType === 'RMA').length,
-    ciRmaType: rmaCases.filter(r => r.rmaType === 'CI RMA').length,
-    lampsType: rmaCases.filter(r => r.rmaType === 'Lamps').length,
+  // Helper: get year from RMA raised date
+  const getYearFromDate = (dateStr: string | null | undefined): number | null => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return d.getFullYear();
   };
 
-  const filteredCases = rmaCases.filter(rma => {
-    const siteName = getSiteName(rma.site || rma.siteName);
-    const matchesSearch = 
-      (rma.rmaNumber?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (siteName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (rma.productName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (rma.serialNumber?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+  // Helper: check if date is within date range (inclusive)
+  const isDateInRange = (dateStr: string | null | undefined, fromDate: string, toDate: string): boolean => {
+    if (!dateStr) return false;
     
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return false;
+      
+      // Set time to start of day for comparison
+      date.setHours(0, 0, 0, 0);
+      
+      // If both dates are set, check range
+      if (fromDate && toDate) {
+        const from = new Date(fromDate);
+        from.setHours(0, 0, 0, 0);
+        const to = new Date(toDate);
+        to.setHours(23, 59, 59, 999); // End of day
+        
+        return date >= from && date <= to;
+      }
+      
+      // If only fromDate is set
+      if (fromDate) {
+        const from = new Date(fromDate);
+        from.setHours(0, 0, 0, 0);
+        return date >= from;
+      }
+      
+      // If only toDate is set
+      if (toDate) {
+        const to = new Date(toDate);
+        to.setHours(23, 59, 59, 999);
+        return date <= to;
+      }
+      
+      return true; // No date filter
+    } catch {
+      return false;
+    }
+  };
+
+  // Available years (from data)
+  const availableYears = Array.from(
+    new Set(
+      rmaCases
+        .map(r => getYearFromDate(r.rmaRaisedDate))
+        .filter((y): y is number => y !== null)
+    )
+  ).sort((a, b) => b - a);
+
+  // Apply date range filter first (takes precedence over year filter)
+  const dateRangeFilteredCases = (dateFrom || dateTo)
+    ? rmaCases.filter(r => isDateInRange(r.rmaRaisedDate, dateFrom, dateTo))
+    : rmaCases;
+
+  // Apply year filter (only if date range is not active)
+  const yearFilteredCases = (dateFrom || dateTo)
+    ? dateRangeFilteredCases // Date range takes precedence
+    : (yearFilter === 'all'
+        ? rmaCases
+        : rmaCases.filter(r => getYearFromDate(r.rmaRaisedDate) === Number(yearFilter)));
+
+  // Calculate statistics for filtered cases
+  const rmaStats = {
+    total: yearFilteredCases.length,
+    open: yearFilteredCases.filter(r => r.status === 'open').length,
+    rmaRaised: yearFilteredCases.filter(r => r.status === 'rma_raised_yet_to_deliver').length,
+    inTransit: yearFilteredCases.filter(r => r.status === 'faulty_in_transit_to_cds').length,
+    closed: yearFilteredCases.filter(r => r.status === 'closed').length,
+    cancelled: yearFilteredCases.filter(r => r.status === 'cancelled').length,
+    dnr: yearFilteredCases.filter(r => r.isDefectivePartDNR === true).length,
+  };
+
+  const filteredCases = yearFilteredCases.filter((rma) => {
+    const search = searchTerm.toLowerCase();
+    const siteName = getSiteName(rma.site || rma.siteName);
+
+    // Age / overdue filter (based on shippedDate and status)
+    const ageDays =
+      ageFilter === 'all'
+        ? null
+        : Number.isFinite(Number(ageFilter))
+        ? Number(ageFilter)
+        : null;
+
+    let matchesAge = true;
+    if (ageDays !== null) {
+      if (rma.status !== 'faulty_in_transit_to_cds' || !rma.shippedDate) {
+        // Age filter only applies to Faulty in Transit to CDS with a shipped date
+        matchesAge = false;
+      } else {
+        const shipped = new Date(rma.shippedDate);
+        if (Number.isNaN(shipped.getTime())) {
+          matchesAge = false;
+        } else {
+          const diffMs = Date.now() - shipped.getTime();
+          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+          matchesAge = diffDays >= ageDays;
+        }
+      }
+    }
+
+    const matchesSearch =
+      (rma.rmaNumber?.toLowerCase() || '').includes(search) ||
+      (rma.callLogNumber?.toLowerCase() || '').includes(search) ||
+      (siteName?.toLowerCase() || '').includes(search) ||
+      (rma.productName?.toLowerCase() || '').includes(search) ||
+      (rma.serialNumber?.toLowerCase() || '').includes(search) ||
+      (rma.defectivePartName?.toLowerCase() || '').includes(search) ||
+      (rma.defectivePartNumber?.toLowerCase() || '').includes(search);
+
     const matchesStatus = statusFilter === 'all' || rma.status === statusFilter;
     const matchesType = typeFilter === 'all' || rma.rmaType === typeFilter;
-    
-    return matchesSearch && matchesStatus && matchesType;
+
+    return matchesSearch && matchesStatus && matchesType && matchesAge;
   });
 
   // Helper to escape CSV values (handles commas, quotes, newlines)
@@ -115,6 +215,29 @@ export function RMAList({ currentUser }: RMAListProps) {
     } catch {
       return dateStr;
     }
+  };
+
+  // Handle date range changes with validation
+  const handleDateFromChange = (value: string) => {
+    setDateFrom(value);
+    // If toDate is set and is before fromDate, clear toDate
+    if (value && dateTo && new Date(value) > new Date(dateTo)) {
+      setDateTo('');
+    }
+  };
+
+  const handleDateToChange = (value: string) => {
+    // Validate that toDate is not before fromDate
+    if (value && dateFrom && new Date(value) < new Date(dateFrom)) {
+      alert('To Date must be after or equal to From Date');
+      return;
+    }
+    setDateTo(value);
+  };
+
+  const handleClearDateRange = () => {
+    setDateFrom('');
+    setDateTo('');
   };
 
   const handleExport = () => {
@@ -225,7 +348,14 @@ export function RMAList({ currentUser }: RMAListProps) {
 
       {/* Statistics Cards */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">RMA Statistics</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-700">RMA Statistics</h3>
+          {(dateFrom || dateTo) && (
+            <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+              Date Range: {dateFrom ? formatDate(dateFrom) : 'Any'} to {dateTo ? formatDate(dateTo) : 'Any'}
+            </span>
+          )}
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
           {/* Total */}
           <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
@@ -296,27 +426,75 @@ export function RMAList({ currentUser }: RMAListProps) {
             <p className="text-xs text-red-600 mt-1">Do Not Return</p>
           </div>
         </div>
-        
-        {/* Type Breakdown */}
-        <div className="grid grid-cols-3 gap-4 mt-4">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200 p-4">
-            <p className="text-xs text-blue-700 font-medium mb-1">RMA Type</p>
-            <p className="text-xl font-bold text-blue-900">{rmaStats.rmaType}</p>
-          </div>
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200 p-4">
-            <p className="text-xs text-purple-700 font-medium mb-1">CI RMA Type</p>
-            <p className="text-xl font-bold text-purple-900">{rmaStats.ciRmaType}</p>
-          </div>
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200 p-4">
-            <p className="text-xs text-amber-700 font-medium mb-1">Lamps Type</p>
-            <p className="text-xl font-bold text-amber-900">{rmaStats.lampsType}</p>
-          </div>
-        </div>
       </div>
 
       {/* Search and Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Date Range Filter Row */}
+        <div className="mb-4 pb-4 border-b border-gray-200">
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="w-4 h-4 text-gray-500" />
+            <label className="text-sm font-medium text-gray-700">Date Range (RMA Raised Date)</label>
+            {(dateFrom || dateTo) && (
+              <button
+                onClick={handleClearDateRange}
+                className="ml-auto flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                title="Clear date range"
+              >
+                <X className="w-3 h-3" />
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">From Date</label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => handleDateFromChange(e.target.value)}
+                max={dateTo || undefined}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">To Date</label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => handleDateToChange(e.target.value)}
+                min={dateFrom || undefined}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {(dateFrom || dateTo) && (
+              <div className="flex items-end">
+                <div className="w-full px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs text-blue-700 font-medium">
+                    {(dateFrom || dateTo) && (
+                      <>
+                        Filtering: {dateFrom ? formatDate(dateFrom) : 'Any'} to {dateTo ? formatDate(dateTo) : 'Any'}
+                        {(dateFrom || dateTo) && (
+                          <span className="block text-blue-600 mt-1">
+                            {yearFilteredCases.length} case{yearFilteredCases.length !== 1 ? 's' : ''} found
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+          {(dateFrom || dateTo) && (
+            <p className="text-xs text-gray-500 mt-2">
+              Note: Date range filter takes precedence over year filter
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {/* Text search */}
           <div className="md:col-span-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -324,12 +502,33 @@ export function RMAList({ currentUser }: RMAListProps) {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by RMA #, site, product, or serial..."
+                placeholder="Search by RMA #, call log, site, product, serial, or part..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
-          
+
+          {/* Year filter */}
+          <div>
+            <select
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              disabled={!!(dateFrom || dateTo)}
+              className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                (dateFrom || dateTo) ? 'bg-gray-100 cursor-not-allowed' : ''
+              }`}
+              title={(dateFrom || dateTo) ? 'Year filter disabled when date range is active' : ''}
+            >
+              <option value="all">All Years</option>
+              {availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status filter */}
           <div>
             <select
               value={statusFilter}
@@ -344,7 +543,8 @@ export function RMAList({ currentUser }: RMAListProps) {
               <option value="cancelled">Cancelled</option>
             </select>
           </div>
-          
+
+          {/* Type filter */}
           <div>
             <select
               value={typeFilter}
@@ -357,12 +557,38 @@ export function RMAList({ currentUser }: RMAListProps) {
               <option value="Lamps">Lamps</option>
             </select>
           </div>
+
+          {/* Age / overdue filter (based on shippedDate and status) */}
+          <div>
+            <select
+              value={ageFilter}
+              onChange={(e) => setAgeFilter(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Ages</option>
+              <option value="30">30+ days (shipped)</option>
+              <option value="60">60+ days (shipped)</option>
+              <option value="90">90+ days (shipped)</option>
+            </select>
+          </div>
         </div>
         
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-          <p className="text-sm text-gray-600">
-            Showing {filteredCases.length} of {rmaCases.length} cases
-          </p>
+          <div>
+            <p className="text-sm text-gray-600">
+              Showing {filteredCases.length} of {yearFilteredCases.length} case{yearFilteredCases.length !== 1 ? 's' : ''}
+              {(dateFrom || dateTo) && (
+                <span className="text-blue-600 font-medium ml-1">
+                  (filtered by date range)
+                </span>
+              )}
+            </p>
+            {(dateFrom || dateTo) && (
+              <p className="text-xs text-gray-500 mt-1">
+                Date range: {dateFrom ? formatDate(dateFrom) : 'Any start'} to {dateTo ? formatDate(dateTo) : 'Any end'}
+              </p>
+            )}
+          </div>
           <button
             onClick={handleExport}
             className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -445,11 +671,25 @@ export function RMAList({ currentUser }: RMAListProps) {
                     <span className="text-sm text-gray-600">{rma.audi?.audiNo || rma.audiNo || '-'}</span>
                   </td>
                   
-                  {/* Product (Name + Serial) */}
-                  <td className="px-4 py-4 min-w-[180px]">
-                    <div className="text-sm">
-                      <div className="text-gray-900 whitespace-nowrap">{rma.productName || '-'}</div>
-                      <div className="text-gray-500 text-xs whitespace-nowrap">S/N: {rma.serialNumber || '-'}</div>
+                  {/* Product + Site + Defective Part (DTR-style compact block) */}
+                  <td className="px-4 py-4 min-w-[220px]">
+                    <div className="text-sm space-y-0.5">
+                      {/* Product model */}
+                      <div className="text-gray-900 whitespace-nowrap">
+                        {rma.productName || '-'}
+                      </div>
+                      {/* Site name */}
+                      <div className="text-gray-700 text-xs whitespace-nowrap">
+                        {getSiteName(rma.site || rma.siteName) || '-'}
+                      </div>
+                      {/* Defective part name / number */}
+                      <div className="text-gray-500 text-xs whitespace-nowrap">
+                        Part: {rma.defectivePartName || rma.defectivePartNumber || '-'}
+                      </div>
+                      {/* Serial number */}
+                      <div className="text-gray-400 text-[11px] whitespace-nowrap">
+                        S/N: {rma.serialNumber || '-'}
+                      </div>
                     </div>
                   </td>
                   

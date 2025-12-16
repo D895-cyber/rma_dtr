@@ -134,3 +134,4 @@ While your current connection string works, for a production application you mig
 
 Your connection string is properly configured for Vercel! 🎉
 
+

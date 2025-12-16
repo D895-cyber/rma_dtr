@@ -590,27 +590,87 @@ async function importRMACases(): Promise<ImportStats> {
         }
       }
 
-      // Handle duplicate RMA numbers by appending suffix
+      // Handle duplicate call log numbers by appending suffix
+      let callLogNumber = row.callLogNumber ? String(row.callLogNumber).trim() : null;
+      if (callLogNumber) {
+        let suffix = 0;
+        let uniqueCallLogNumber = callLogNumber;
+        
+        // Check if call log number already exists
+        while (await prisma.rmaCase.findFirst({ where: { callLogNumber: uniqueCallLogNumber } })) {
+          suffix++;
+          uniqueCallLogNumber = `${callLogNumber}${suffix}`;
+        }
+        
+        if (suffix > 0) {
+          console.log(`   ℹ️  Call Log #${callLogNumber} already exists, using ${uniqueCallLogNumber}`);
+        }
+        callLogNumber = uniqueCallLogNumber;
+      }
+
+      // Handle rmaNumber - check for duplicates and append suffix if duplicate
       let rmaNumber = row.rmaNumber ? String(row.rmaNumber).trim() : null;
-      if (rmaNumber) {
+      
+      // If rmaNumber is "-" or empty, set to null
+      if (rmaNumber === '-' || rmaNumber === '' || rmaNumber === '"-"') {
+        rmaNumber = null;
+      } else if (rmaNumber) {
+        // Check if this rmaNumber already exists in database
         let suffix = 0;
         let uniqueRmaNumber = rmaNumber;
         
-        // Check if RMA number already exists
         while (await prisma.rmaCase.findFirst({ where: { rmaNumber: uniqueRmaNumber } })) {
           suffix++;
           uniqueRmaNumber = `${rmaNumber}-${suffix}`;
         }
         
         if (suffix > 0) {
-          console.log(`   ℹ️  RMA #${rmaNumber} already exists, using ${uniqueRmaNumber}`);
+          console.log(`   ℹ️  RMA number "${rmaNumber}" already exists, using ${uniqueRmaNumber}`);
         }
         rmaNumber = uniqueRmaNumber;
       }
 
+      // Auto-populate part names from parts database based on part numbers
+      // Priority: Database > Excel > null
+      const defectivePartNumber = row.defectivePartNumber ? String(row.defectivePartNumber).trim() : null;
+      const excelDefectivePartName = row.defectivePartName ? String(row.defectivePartName).trim() : null;
+      let defectivePartName = excelDefectivePartName;
+      
+      // If defectivePartNumber is provided, look it up from parts table to get standardized part name
+      if (defectivePartNumber && projector.projectorModelId) {
+        const part = await prisma.part.findFirst({
+          where: {
+            partNumber: defectivePartNumber,
+            projectorModelId: projector.projectorModelId,
+          },
+        });
+        if (part) {
+          // Use part name from database for consistency (database is source of truth)
+          defectivePartName = part.partName;
+          if (!excelDefectivePartName || excelDefectivePartName !== part.partName) {
+            console.log(`   ℹ️  Auto-populated defectivePartName "${part.partName}" for part number "${defectivePartNumber}"`);
+          }
+        } else {
+          // Part not found in database - use Excel value if provided
+          if (excelDefectivePartName) {
+            defectivePartName = excelDefectivePartName;
+            console.log(`   ℹ️  Using Excel defectivePartName "${excelDefectivePartName}" (part number "${defectivePartNumber}" not in database)`);
+          } else {
+            console.log(`   ⚠️  Part number "${defectivePartNumber}" not found in database and no name provided in Excel`);
+          }
+        }
+      }
+
+      // Normalize RMA type - handle "RMA CL" -> "RMA_CL"
+      let rmaType = (row.rmaType || 'RMA').trim();
+      rmaType = rmaType.replace('RMA CI', 'RMA_CL').replace('RMA CL', 'RMA_CL');
+      if (!['RMA', 'SRMA', 'RMA_CL', 'Lamps'].includes(rmaType)) {
+        rmaType = 'RMA'; // Default to RMA if invalid
+      }
+
       const rmaData: any = {
-        rmaType: (row.rmaType || 'RMA').trim().replace('RMA CI', 'RMA CL'), // Fix typo: CI → CL
-        callLogNumber: row.callLogNumber ? String(row.callLogNumber).trim() : null,
+        rmaType: rmaType,
+        callLogNumber: callLogNumber,
         rmaNumber: rmaNumber,
         rmaOrderNumber: row.rmaOrderNumber ? String(row.rmaOrderNumber).trim() : null,
         rmaRaisedDate: excelDateToJSDate(row.rmaRaisedDate),
@@ -620,15 +680,15 @@ async function importRMACases(): Promise<ImportStats> {
         productPartNumber: row.productPartNumber || null,
         serialNumber: serialNumber,
         defectDetails: row.defectDetails || null,
-        defectivePartName: row.defectivePartName || null,
-        defectivePartNumber: row.defectivePartNumber || null,
-        defectivePartSerial: row.defectivePartSerial || null,
+        defectivePartName: defectivePartName,
+        defectivePartNumber: defectivePartNumber,
+        defectivePartSerial: row.defectivePartSerial ? String(row.defectivePartSerial).trim() : null,
         isDefectivePartDNR: row.isDefectivePartDNR === true || row.isDefectivePartDNR === 'true' || false,
         defectivePartDNRReason: row.defectivePartDNRReason || null,
         replacedPartNumber: row.replacedPartNumber || null,
-        replacedPartSerial: row.replacedPartSerial || null,
+        replacedPartSerial: row.replacedPartSerial ? String(row.replacedPartSerial).trim() : null,
         symptoms: row.symptoms || null,
-        shippingCarrier: row.shippingCarrier || null,
+        shippingCarrier: row.shippingCarrier ? String(row.shippingCarrier).trim() : null,
         trackingNumberOut: row.trackingNumberOut ? String(row.trackingNumberOut).trim() : null,
         returnTrackingNumber: row.returnTrackingNumber ? String(row.returnTrackingNumber).trim() : null,
         returnShippedThrough: row.returnShippedThrough || null,
@@ -761,16 +821,22 @@ async function main() {
   const allStats: { [key: string]: ImportStats } = {};
 
   try {
-    // Import in correct order
+    // Import in dependency order:
+    // 1) Sites
+    // 2) Projector Models
+    // 3) Projectors
+    // 4) Audis
+    // 5) Parts
+    // 6) DTR Cases
+    // 7) RMA Cases
+
     allStats['Sites'] = await importSites();
     allStats['Projector Models'] = await importProjectorModels();
     allStats['Projectors'] = await importProjectors();
-    allStats['Parts'] = await importParts();  // Add parts import after projector models
     allStats['Audis'] = await importAudis();
-    
-    // Import RMA and DTR cases
-    allStats['RMA Cases'] = await importRMACases();
+    allStats['Parts'] = await importParts();
     allStats['DTR Cases'] = await importDTRCases();
+    allStats['RMA Cases'] = await importRMACases();
 
     // Print summary
     console.log('\n╔══════════════════════════════════════════════════════════════════╗');

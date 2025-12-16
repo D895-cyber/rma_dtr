@@ -14,9 +14,17 @@ export async function register(req: Request, res: Response) {
       return sendError(res, 'Name, email, and password are required', 400);
     }
 
-    // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    // Normalize email to lowercase for consistency
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check if user exists (case-insensitive)
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: normalizedEmail,
+          mode: 'insensitive',
+        },
+      },
     });
 
     if (existingUser) {
@@ -30,7 +38,7 @@ export async function register(req: Request, res: Response) {
     const user = await prisma.user.create({
       data: {
         name,
-        email,
+        email: normalizedEmail, // Store email in lowercase
         passwordHash,
         role: role.toLowerCase(),
         active: true,
@@ -68,24 +76,50 @@ export async function login(req: Request, res: Response) {
       return sendError(res, 'Email and password are required', 400);
     }
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email },
+    // Normalize email to lowercase for case-insensitive lookup
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Find user - try exact match first, then case-insensitive
+    let user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
     });
 
+    // If not found with exact match, try case-insensitive search
     if (!user) {
+      const allUsers = await prisma.user.findMany({
+        where: {
+          email: {
+            contains: normalizedEmail,
+            mode: 'insensitive',
+          },
+        },
+      });
+      // Find exact match (case-insensitive)
+      user = allUsers.find(u => u.email.toLowerCase() === normalizedEmail) || null;
+    }
+
+    if (!user) {
+      console.error(`Login attempt failed: User not found for email: ${normalizedEmail}`);
       return sendError(res, 'Invalid email or password', 401);
     }
 
     // Check if user is active
     if (!user.active) {
+      console.error(`Login attempt failed: Account inactive for email: ${normalizedEmail}`);
       return sendError(res, 'Account is inactive. Contact administrator.', 403);
+    }
+
+    // Check if password hash exists
+    if (!user.passwordHash) {
+      console.error(`Login attempt failed: No password hash for user: ${user.id} (${normalizedEmail})`);
+      return sendError(res, 'Account setup incomplete. Please contact administrator to reset password.', 401);
     }
 
     // Verify password
     const isPasswordValid = await comparePassword(password, user.passwordHash);
 
     if (!isPasswordValid) {
+      console.error(`Login attempt failed: Invalid password for email: ${normalizedEmail}`);
       return sendError(res, 'Invalid email or password', 401);
     }
 
@@ -99,6 +133,7 @@ export async function login(req: Request, res: Response) {
     // Return user without password
     const { passwordHash, ...userWithoutPassword } = user;
 
+    console.log(`Login successful for user: ${user.email} (${user.role})`);
     return sendSuccess(res, { user: userWithoutPassword, token }, 'Login successful');
   } catch (error: any) {
     console.error('Login error:', error);

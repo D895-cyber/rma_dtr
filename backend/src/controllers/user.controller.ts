@@ -95,8 +95,17 @@ export async function createUser(req: Request, res: Response) {
       return sendError(res, 'Name, email, password, and role are required', 400);
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    // Normalize email to lowercase for consistency
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check for existing user (case-insensitive)
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: {
+          equals: normalizedEmail,
+          mode: 'insensitive',
+        },
+      },
     });
 
     if (existingUser) {
@@ -108,7 +117,7 @@ export async function createUser(req: Request, res: Response) {
     const user = await prisma.user.create({
       data: {
         name,
-        email,
+        email: normalizedEmail, // Store email in lowercase
         passwordHash,
         role: role.toLowerCase(),
         active: userActive,

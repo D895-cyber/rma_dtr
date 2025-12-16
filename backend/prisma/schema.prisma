@@ -188,7 +188,7 @@ enum CaseSeverity {
 model RmaCase {
   id                      String     @id @default(uuid())
   rmaType                 RmaType    @map("rma_type")
-  callLogNumber           String?    @map("call_log_number")  // Numeric value, NOT linked to DTR
+  callLogNumber           String?    @unique @map("call_log_number")  // Numeric value, NOT linked to DTR (unique)
   rmaNumber               String?    @map("rma_number")  // PO Number (optional)
   rmaOrderNumber          String?    @map("rma_order_number")  // Order Number (optional)
   rmaRaisedDate           DateTime   @map("rma_raised_date") @db.Date

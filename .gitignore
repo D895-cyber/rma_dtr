@@ -66,3 +66,4 @@ backend/data/~$*.xlsx
 # Optional: Keep migrations but ignore local database files
 # prisma/migrations/ is tracked (needed for production)
 
+

@@ -372,15 +372,48 @@ export async function updateRmaCase(req: AuthRequest, res: Response) {
     }
 
     // Convert dates if present
-    if (cleanUpdateData.rmaRaisedDate) cleanUpdateData.rmaRaisedDate = new Date(cleanUpdateData.rmaRaisedDate);
-    if (cleanUpdateData.customerErrorDate) cleanUpdateData.customerErrorDate = new Date(cleanUpdateData.customerErrorDate);
-    if (cleanUpdateData.shippedDate) cleanUpdateData.shippedDate = new Date(cleanUpdateData.shippedDate);
-    if (cleanUpdateData.returnShippedDate) cleanUpdateData.returnShippedDate = new Date(cleanUpdateData.returnShippedDate);
+    if (cleanUpdateData.rmaRaisedDate) {
+      cleanUpdateData.rmaRaisedDate = new Date(cleanUpdateData.rmaRaisedDate);
+    }
+    if (cleanUpdateData.customerErrorDate) {
+      cleanUpdateData.customerErrorDate = new Date(cleanUpdateData.customerErrorDate);
+    }
+
+    // Handle shippedDate and returnShippedDate safely (allow clearing to null)
+    if (cleanUpdateData.shippedDate !== undefined) {
+      if (
+        cleanUpdateData.shippedDate === '' ||
+        cleanUpdateData.shippedDate === 'null' ||
+        cleanUpdateData.shippedDate === null
+      ) {
+        cleanUpdateData.shippedDate = null;
+      } else {
+        cleanUpdateData.shippedDate = new Date(cleanUpdateData.shippedDate);
+      }
+    }
+
+    if (cleanUpdateData.returnShippedDate !== undefined) {
+      if (
+        cleanUpdateData.returnShippedDate === '' ||
+        cleanUpdateData.returnShippedDate === 'null' ||
+        cleanUpdateData.returnShippedDate === null
+      ) {
+        cleanUpdateData.returnShippedDate = null;
+      } else {
+        cleanUpdateData.returnShippedDate = new Date(cleanUpdateData.returnShippedDate);
+      }
+    }
 
     // Convert null strings to null
-    if (cleanUpdateData.assignedTo === '' || cleanUpdateData.assignedTo === 'null') cleanUpdateData.assignedTo = null;
-    if (cleanUpdateData.audiId === '' || cleanUpdateData.audiId === 'null') cleanUpdateData.audiId = null;
-    if (cleanUpdateData.defectivePartDNRReason === '' || cleanUpdateData.defectivePartDNRReason === 'null') cleanUpdateData.defectivePartDNRReason = null;
+    if (cleanUpdateData.assignedTo === '' || cleanUpdateData.assignedTo === 'null') {
+      cleanUpdateData.assignedTo = null;
+    }
+    if (cleanUpdateData.audiId === '' || cleanUpdateData.audiId === 'null') {
+      cleanUpdateData.audiId = null;
+    }
+    if (cleanUpdateData.defectivePartDNRReason === '' || cleanUpdateData.defectivePartDNRReason === 'null') {
+      cleanUpdateData.defectivePartDNRReason = null;
+    }
 
     const rmaCase = await prisma.rmaCase.update({
       where: { id },

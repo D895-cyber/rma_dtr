@@ -18,6 +18,7 @@ import {
   createProjector,
   updateProjector,
   deleteProjector,
+  transferProjector,
 } from '../controllers/masterData.controller';
 import {
   // Projector Model controllers
@@ -64,6 +65,7 @@ router.get('/projectors/:id', getProjectorById);
 router.post('/projectors', requireRole('admin', 'manager'), createProjector);
 router.put('/projectors/:id', requireRole('admin', 'manager'), updateProjector);
 router.delete('/projectors/:id', requireRole('admin'), deleteProjector);
+router.post('/projectors/:id/transfer', requireRole('admin', 'manager'), transferProjector);
 
 export default router;
 

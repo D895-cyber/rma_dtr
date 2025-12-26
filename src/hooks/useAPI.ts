@@ -246,6 +246,7 @@ export function useMasterDataAPI() {
     createProjectorModel: masterDataService.createProjectorModel,
     updateProjectorModel: masterDataService.updateProjectorModel,
     deleteProjectorModel: masterDataService.deleteProjectorModel,
+    transferProjector: masterDataService.transferProjector,
   };
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Building2, ChevronDown, ChevronRight, Save, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Building2, ChevronDown, ChevronRight, Save, X, ArrowRightLeft } from 'lucide-react';
 import { useMasterDataAPI, Site, Audi, Projector } from '../hooks/useAPI';
 
 interface MasterDataProps {
@@ -23,6 +23,7 @@ export function MasterData({ currentUser }: MasterDataProps) {
     deleteAudi,
     createProjector,
     createProjectorModel,
+    transferProjector,
   } = useMasterDataAPI();
   
   const [expandedSiteId, setExpandedSiteId] = useState<string | null>(null);
@@ -38,6 +39,13 @@ export function MasterData({ currentUser }: MasterDataProps) {
     modelNo: '',
     serialNumber: '',
   });
+
+  // Transfer dialog state
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [transferSourceAudi, setTransferSourceAudi] = useState<{ siteId: string; audi: Audi } | null>(null);
+  const [transferTargetSiteId, setTransferTargetSiteId] = useState<string>('');
+  const [transferTargetAudiId, setTransferTargetAudiId] = useState<string>('');
+  const [transferReason, setTransferReason] = useState<string>('');
 
   const handleAddSite = async () => {
     if (siteFormData.siteName.trim()) {
@@ -248,6 +256,87 @@ export function MasterData({ currentUser }: MasterDataProps) {
     });
     setEditingAudi({ siteId, audi });
     setShowAudiForm(true);
+  };
+
+  const openTransferDialog = (siteId: string, audi: Audi) => {
+    console.log('openTransferDialog clicked for audi:', { siteId, audiId: audi.id, projectorId: audi.projectorId });
+    if (!audi.projectorId) {
+      alert('This audi does not have a projector assigned to transfer.');
+      return;
+    }
+    
+    // Find the site to get site name
+    const site = sites.find(s => s.id === siteId);
+    
+    // Create audi object with site information
+    const audiWithSite = {
+      ...audi,
+      site: site || undefined,
+    };
+    
+    console.log('Setting transfer dialog state...', { site, audiWithSite });
+    setTransferSourceAudi({ siteId, audi: audiWithSite });
+    setTransferTargetSiteId(siteId);
+    setTransferTargetAudiId('');
+    setTransferReason('');
+    setShowTransferDialog(true);
+    console.log('Transfer dialog state set. showTransferDialog should be true now.');
+  };
+
+  // Debug effect to track dialog state
+  useEffect(() => {
+    console.log('Transfer dialog state changed:', {
+      showTransferDialog,
+      hasSourceAudi: !!transferSourceAudi,
+      sourceAudi: transferSourceAudi,
+    });
+  }, [showTransferDialog, transferSourceAudi]);
+
+  const handleTransferProjector = async () => {
+    if (!transferSourceAudi || !transferSourceAudi.audi.projectorId) {
+      alert('No source projector selected.');
+      return;
+    }
+    if (!transferTargetSiteId || !transferTargetAudiId) {
+      alert('Please select target site and audi.');
+      return;
+    }
+    if (transferTargetAudiId === transferSourceAudi.audi.id) {
+      alert('Source and target audi are the same.');
+      return;
+    }
+    try {
+      console.log('Transferring projector:', {
+        projectorId: transferSourceAudi.audi.projectorId,
+        toSiteId: transferTargetSiteId,
+        toAudiId: transferTargetAudiId,
+        reason: transferReason,
+      });
+      
+      const result = await transferProjector(transferSourceAudi.audi.projectorId, {
+        toSiteId: transferTargetSiteId,
+        toAudiId: transferTargetAudiId,
+        reason: transferReason || undefined,
+      });
+      
+      console.log('Transfer result:', result);
+      
+      if (result.success) {
+        alert('Projector transferred successfully.');
+        setShowTransferDialog(false);
+        setTransferSourceAudi(null);
+        setTransferTargetSiteId('');
+        setTransferTargetAudiId('');
+        setTransferReason('');
+        await loadSites();
+      } else {
+        console.error('Transfer failed:', result);
+        alert(result.message || result.error || 'Failed to transfer projector');
+      }
+    } catch (error: any) {
+      console.error('Transfer projector error:', error);
+      alert(error.message || 'Failed to transfer projector. Please check the console for details.');
+    }
   };
 
   return (
@@ -475,6 +564,13 @@ export function MasterData({ currentUser }: MasterDataProps) {
                             </div>
                             <div className="flex items-center gap-1">
                               <button
+                                onClick={() => openTransferDialog(site.id, audi)}
+                                className="p-1.5 text-purple-600 hover:bg-purple-100 rounded transition-colors"
+                                title="Transfer projector to another audi/site"
+                              >
+                                <ArrowRightLeft className="w-3.5 h-3.5" />
+                              </button>
+                              <button
                                 onClick={() => openEditAudiForm(site.id, audi)}
                                 className="p-1.5 text-gray-600 hover:bg-gray-200 rounded transition-colors"
                                 title="Edit Audi"
@@ -500,6 +596,122 @@ export function MasterData({ currentUser }: MasterDataProps) {
           )}
         </div>
       </div>
+
+      {/* Projector Transfer Dialog */}
+      {showTransferDialog && transferSourceAudi && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowTransferDialog(false);
+            }
+          }}
+        >
+          <div 
+            className="bg-white rounded-lg p-6 w-full max-w-lg mx-4 shadow-2xl"
+            style={{ maxHeight: '90vh', overflowY: 'auto', zIndex: 10000 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-gray-900 text-xl font-semibold">Transfer Projector</h3>
+              <button
+                onClick={() => setShowTransferDialog(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Close dialog"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700">
+                <p className="mb-1">
+                  <span className="font-medium">Projector Serial:</span>{' '}
+                  <span className="font-mono">{transferSourceAudi.audi.projector?.serialNumber || 'Unknown'}</span>
+                </p>
+                <p>
+                  <span className="font-medium">Current Location:</span>{' '}
+                  {(() => {
+                    const currentSite = sites.find(s => s.id === transferSourceAudi.siteId);
+                    return currentSite ? `${currentSite.siteName} / ${transferSourceAudi.audi.audiNo}` : `Unknown site / ${transferSourceAudi.audi.audiNo}`;
+                  })()}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Target Site *</label>
+                <select
+                  value={transferTargetSiteId}
+                  onChange={(e) => {
+                    setTransferTargetSiteId(e.target.value);
+                    setTransferTargetAudiId('');
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Site</option>
+                  {sites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.siteName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Target Audi *</label>
+                <select
+                  value={transferTargetAudiId}
+                  onChange={(e) => setTransferTargetAudiId(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  disabled={!transferTargetSiteId}
+                >
+                  <option value="">Select Audi</option>
+                  {transferTargetSiteId &&
+                    sites
+                      .find((s) => s.id === transferTargetSiteId)
+                      ?.audis.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.audiNo} {a.projector?.serialNumber ? `- [Current: ${a.projector.serialNumber}]` : ''}
+                        </option>
+                      ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Target audi must belong to the selected site. If it already has a different projector, transfer
+                  will be blocked.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Reason (optional)</label>
+                <textarea
+                  value={transferReason}
+                  onChange={(e) => setTransferReason(e.target.value)}
+                  rows={3}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  placeholder="e.g., Projector moved from Audi 1 to Audi 3 due to seating reconfiguration"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+              <button
+                onClick={() => setShowTransferDialog(false)}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleTransferProjector}
+                disabled={!transferTargetSiteId || !transferTargetAudiId}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                Transfer Projector
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

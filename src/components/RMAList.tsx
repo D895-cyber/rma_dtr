@@ -888,7 +888,7 @@ export function RMAList({ currentUser }: RMAListProps) {
           </div>
         </div>
         
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-200">
           <div>
             <p className="text-sm text-gray-600">
               Showing {filteredCases.length} of {yearFilteredCases.length} case{yearFilteredCases.length !== 1 ? 's' : ''}
@@ -904,10 +904,10 @@ export function RMAList({ currentUser }: RMAListProps) {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
             <button
               onClick={handleExportOverdueToExcel}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-red-700 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors border border-red-200"
+              className="flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-red-700 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors border border-red-200 w-full sm:w-auto"
               title="Export overdue RMAs (30+ days in transit) to Excel"
             >
               <FileSpreadsheet className="w-4 h-4" />
@@ -919,7 +919,7 @@ export function RMAList({ currentUser }: RMAListProps) {
                 setShowExportDialog(true);
                 console.log('Dialog state should be true now');
               }}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors w-full sm:w-auto"
             >
               <Download className="w-4 h-4" />
               Export CSV

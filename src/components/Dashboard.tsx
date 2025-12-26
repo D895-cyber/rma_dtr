@@ -88,104 +88,118 @@ export function Dashboard({ currentUser }: DashboardProps) {
   const overdueRMA = (stats.rma as any).overdueCases || [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full">
       {/* Welcome Section */}
-      <div>
-        <h2 className="text-gray-900 mb-1">Welcome back, {currentUser.name}!</h2>
+      <div className="pb-2">
+        <h2 className="text-3xl font-bold text-gray-900 mb-1">Welcome back, {currentUser.name}!</h2>
         <p className="text-gray-600">Here&apos;s an overview of your service operations</p>
       </div>
 
       {/* DTR Stats */}
       <div>
-        <h3 className="text-gray-900 mb-4">DTR Overview</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 className="text-xl font-bold text-gray-900 mb-3 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-blue-600" />
+          DTR Overview
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-blue-300 transition-all">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Total Cases</p>
-              <FileText className="w-5 h-5 text-blue-600" />
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</p>
+              <FileText className="w-4 h-4 text-blue-600" />
             </div>
-            <p className="text-gray-900">{dtrStats.total}</p>
+            <p className="text-3xl font-bold text-gray-900">{dtrStats.total}</p>
+            <p className="text-xs text-gray-500 mt-1">All cases</p>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-orange-300 transition-all">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Open</p>
-              <AlertCircle className="w-5 h-5 text-orange-600" />
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Open</p>
+              <AlertCircle className="w-4 h-4 text-orange-600" />
             </div>
-            <p className="text-gray-900">{dtrStats.open}</p>
+            <p className="text-3xl font-bold text-orange-600">{dtrStats.open}</p>
+            <p className="text-xs text-gray-500 mt-1">Need attention</p>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-yellow-300 transition-all">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">In Progress</p>
-              <Clock className="w-5 h-5 text-yellow-600" />
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Active</p>
+              <Clock className="w-4 h-4 text-yellow-600" />
             </div>
-            <p className="text-gray-900">{dtrStats.inProgress}</p>
+            <p className="text-3xl font-bold text-yellow-600">{dtrStats.inProgress}</p>
+            <p className="text-xs text-gray-500 mt-1">In progress</p>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-green-300 transition-all">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Closed</p>
-              <CheckCircle className="w-5 h-5 text-green-600" />
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Closed</p>
+              <CheckCircle className="w-4 h-4 text-green-600" />
             </div>
-            <p className="text-gray-900">{dtrStats.closed}</p>
+            <p className="text-3xl font-bold text-green-600">{dtrStats.closed}</p>
+            <p className="text-xs text-gray-500 mt-1">Resolved</p>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border-2 border-red-300 p-4 hover:shadow-lg transition-all">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Critical</p>
-              <AlertCircle className="w-5 h-5 text-red-600" />
+              <p className="text-xs font-semibold text-red-700 uppercase tracking-wide">Critical</p>
+              <AlertCircle className="w-4 h-4 text-red-700" />
             </div>
-            <p className="text-gray-900">{dtrStats.critical}</p>
+            <p className="text-3xl font-bold text-red-700">{dtrStats.critical}</p>
+            <p className="text-xs text-red-600 mt-1">Urgent action!</p>
           </div>
         </div>
       </div>
 
       {/* RMA Stats */}
       <div>
-        <h3 className="text-gray-900 mb-4">RMA Overview</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 className="text-xl font-bold text-gray-900 mb-3 flex items-center gap-2">
+          <Package className="w-5 h-5 text-purple-600" />
+          RMA Overview
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-purple-300 transition-all">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Total RMAs</p>
-              <Package className="w-5 h-5 text-purple-600" />
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</p>
+              <Package className="w-4 h-4 text-purple-600" />
             </div>
-            <p className="text-gray-900">{rmaStats.total}</p>
+            <p className="text-3xl font-bold text-gray-900">{rmaStats.total}</p>
+            <p className="text-xs text-gray-500 mt-1">All RMAs</p>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-orange-300 transition-all">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Open</p>
-              <Clock className="w-5 h-5 text-orange-600" />
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Open</p>
+              <Clock className="w-4 h-4 text-orange-600" />
             </div>
-            <p className="text-gray-900">{rmaStats.open}</p>
+            <p className="text-3xl font-bold text-orange-600">{rmaStats.open}</p>
+            <p className="text-xs text-gray-500 mt-1">Pending</p>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-blue-300 transition-all">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">In Transit</p>
-              <TrendingUp className="w-5 h-5 text-blue-600" />
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Transit</p>
+              <TrendingUp className="w-4 h-4 text-blue-600" />
             </div>
-            <p className="text-gray-900">{rmaStats.inTransit}</p>
+            <p className="text-3xl font-bold text-blue-600">{rmaStats.inTransit}</p>
+            <p className="text-xs text-gray-500 mt-1">On the way</p>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-green-300 transition-all">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Closed</p>
-              <CheckCircle className="w-5 h-5 text-green-600" />
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Closed</p>
+              <CheckCircle className="w-4 h-4 text-green-600" />
             </div>
-            <p className="text-gray-900">{rmaStats.closed}</p>
+            <p className="text-3xl font-bold text-green-600">{rmaStats.closed}</p>
+            <p className="text-xs text-gray-500 mt-1">Completed</p>
           </div>
 
-          {/* Overdue (30+ days since shipped) */}
-          <div className="bg-white rounded-lg border border-red-200 p-6 bg-red-50">
+          <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border-2 border-red-300 p-4 hover:shadow-lg transition-all">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-red-700">Overdue (30+ days)</p>
-              <AlertCircle className="w-5 h-5 text-red-600" />
+              <p className="text-xs font-semibold text-red-700 uppercase tracking-wide">Overdue</p>
+              <AlertCircle className="w-4 h-4 text-red-700" />
             </div>
-            <p className="text-gray-900">{rmaStats.overdue}</p>
+            <p className="text-3xl font-bold text-red-700">{rmaStats.overdue}</p>
             <p className="text-xs text-red-600 mt-1">
-              {rmaStats.total > 0 ? Math.round((rmaStats.overdue / rmaStats.total) * 100) : 0}% of RMAs
+              {rmaStats.total > 0 ? Math.round((rmaStats.overdue / rmaStats.total) * 100) : 0}% (30+ days)
             </p>
           </div>
         </div>

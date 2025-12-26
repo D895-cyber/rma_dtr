@@ -89,9 +89,28 @@ model Projector {
   // Relations
   projectorModel ProjectorModel @relation(fields: [projectorModelId], references: [id], onDelete: Restrict)
   audis          Audi[]
+  transfers      ProjectorTransfer[]
 
   @@index([projectorModelId])
   @@map("projectors")
+}
+
+model ProjectorTransfer {
+  id          String   @id @default(uuid())
+  projectorId String   @map("projector_id")
+  fromSiteId  String?  @map("from_site_id")
+  fromAudiId  String?  @map("from_audi_id")
+  toSiteId    String   @map("to_site_id")
+  toAudiId    String   @map("to_audi_id")
+  movedBy     String?  @map("moved_by")
+  movedAt     DateTime @default(now()) @map("moved_at")
+  reason      String?  @db.Text
+
+  // Relations
+  projector Projector @relation(fields: [projectorId], references: [id], onDelete: Cascade)
+
+  @@index([projectorId, movedAt])
+  @@map("projector_transfers")
 }
 
 model Part {

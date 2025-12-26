@@ -10,7 +10,7 @@ import { PartsManagement } from './components/PartsManagement';
 import { ModelsManagement } from './components/ModelsManagement';
 import { AuthScreen } from './components/AuthScreen';
 import { useAuth } from './contexts/AuthContext';
-import { LayoutDashboard, FileText, Package, LogOut, BarChart3, Building2, Users, Wrench } from 'lucide-react';
+import { LayoutDashboard, FileText, Package, BarChart3, Building2, Users, Wrench, Box, LogOut } from 'lucide-react';
 
 export default function App() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
@@ -41,136 +41,93 @@ export default function App() {
   // Use real user from backend
   const currentUser = user;
 
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'dtr', label: 'DTR Cases', icon: FileText },
+    { id: 'rma', label: 'RMA Cases', icon: Package },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'masterdata', label: 'Master Data', icon: Building2 },
+    { id: 'models', label: 'Models', icon: Box },
+    { id: 'parts', label: 'Parts', icon: Wrench },
+  ];
+
+  const adminItems = [
+    { id: 'users', label: 'Users', icon: Users },
+  ];
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
                 <FileText className="w-5 h-5 text-white" />
               </div>
-              <div>
-                <h1 className="text-gray-900">Service CRM</h1>
-                <p className="text-xs text-gray-500">DTR & RMA Management</p>
-              </div>
+              <h1 className="text-lg font-semibold text-gray-900">Service CRM</h1>
             </div>
             <div className="flex items-center gap-4">
               <Notifications currentUser={currentUser} />
               <div className="text-right">
-                <p className="text-sm text-gray-900">{currentUser.name}</p>
+                <p className="text-sm font-medium text-gray-900">{currentUser.name}</p>
                 <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
               </div>
-              <button
-                onClick={handleLogout}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Navigation */}
+      {/* Navigation Tabs */}
       <nav className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex gap-1">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'dashboard'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              Dashboard
-            </button>
-            <button
-              onClick={() => setActiveTab('dtr')}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'dtr'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              DTR Cases
-            </button>
-            <button
-              onClick={() => setActiveTab('rma')}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'rma'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              RMA Cases
-            </button>
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'analytics'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              Analytics
-            </button>
-            <button
-              onClick={() => setActiveTab('masterdata')}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'masterdata'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Building2 className="w-4 h-4" />
-              Master Data
-            </button>
-            <button
-              onClick={() => setActiveTab('models')}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'models'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              Models
-            </button>
-            <button
-              onClick={() => setActiveTab('parts')}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'parts'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Wrench className="w-4 h-4" />
-              Parts
-            </button>
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'users'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              Users
-            </button>
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="flex space-x-1 overflow-x-auto">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id as any)}
+                  className={`
+                    flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors
+                    ${isActive
+                      ? 'border-blue-600 text-blue-600 bg-blue-50'
+                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                    }
+                  `}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+            {currentUser?.role === 'admin' && adminItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id as any)}
+                  className={`
+                    flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors
+                    ${isActive
+                      ? 'border-blue-600 text-blue-600 bg-blue-50'
+                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                    }
+                  `}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="p-4 sm:p-6 lg:p-8">
         {activeTab === 'dashboard' && <Dashboard currentUser={currentUser} />}
         {activeTab === 'dtr' && <DTRList currentUser={currentUser} />}
         {activeTab === 'rma' && <RMAList currentUser={currentUser} />}

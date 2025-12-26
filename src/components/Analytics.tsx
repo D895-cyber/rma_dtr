@@ -1,18 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { AlertTriangle, TrendingUp, Calendar, Download, Filter } from 'lucide-react';
-import { useDTRCases, useRMACases } from '../hooks/useAPI';
+import { AlertTriangle, TrendingUp, Calendar, Download, Filter, X } from 'lucide-react';
+import { useDTRCases, useRMACases, useUsersAPI } from '../hooks/useAPI';
 
 interface AnalyticsProps {
   currentUser: any;
 }
 
 export function Analytics({ currentUser }: AnalyticsProps) {
-  const { cases: dtrCases } = useDTRCases();
-  const { cases: rmaCases } = useRMACases();
+  const { cases: allDTRCases } = useDTRCases();
+  const { cases: allRMACases } = useRMACases();
+  const { users } = useUsersAPI();
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [selectedSite, setSelectedSite] = useState('all');
   const [selectedEngineer, setSelectedEngineer] = useState('all');
+  const [timeView, setTimeView] = useState<'monthly' | 'quarterly'>('monthly');
 
   // Helper function to safely get site name
   const getSiteName = (site: any): string => {
@@ -20,6 +22,96 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     if (typeof site === 'string') return site;
     return site.siteName || 'Unknown';
   };
+
+  // Helper function to get RMA site name (handles both object and string)
+  const getRMASiteName = (rma: any): string => {
+    if (rma.siteName) return rma.siteName; // Direct field
+    if (rma.site) return getSiteName(rma.site); // Nested object
+    return 'Unknown';
+  };
+
+  // Helper function to check if date is within range
+  const isDateInRange = (date: string | null | undefined, from: string, to: string): boolean => {
+    if (!date) return false;
+    if (!from && !to) return true; // No date filter
+    const dateObj = new Date(date);
+    if (from && dateObj < new Date(from)) return false;
+    if (to && dateObj > new Date(to + 'T23:59:59')) return false;
+    return true;
+  };
+
+  // Apply filters to data
+  const filteredData = useMemo(() => {
+    let filteredDTR = [...allDTRCases];
+    let filteredRMA = [...allRMACases];
+
+    // Date filter - use errorDate for DTR, rmaRaisedDate (with fallbacks) for RMA
+    if (dateRange.from || dateRange.to) {
+      filteredDTR = filteredDTR.filter(dtr => 
+        isDateInRange(dtr.errorDate || dtr.createdDate, dateRange.from, dateRange.to)
+      );
+      filteredRMA = filteredRMA.filter(rma => {
+        // Try multiple date fields for RMA filtering
+        const rmaDate = rma.rmaRaisedDate || rma.createdAt || rma.customerErrorDate;
+        return isDateInRange(rmaDate, dateRange.from, dateRange.to);
+      });
+    }
+
+    // Site filter
+    if (selectedSite !== 'all') {
+      filteredDTR = filteredDTR.filter(dtr => getSiteName(dtr.site) === selectedSite);
+      filteredRMA = filteredRMA.filter(rma => getRMASiteName(rma) === selectedSite);
+    }
+
+    // Engineer filter
+    if (selectedEngineer !== 'all') {
+      filteredDTR = filteredDTR.filter(dtr => dtr.assignedTo === selectedEngineer || dtr.createdBy === selectedEngineer);
+      filteredRMA = filteredRMA.filter(rma => rma.assignedTo === selectedEngineer || rma.createdBy === selectedEngineer);
+    }
+
+    return { filteredDTR, filteredRMA };
+  }, [allDTRCases, allRMACases, dateRange, selectedSite, selectedEngineer]);
+
+  const { filteredDTR: dtrCases, filteredRMA: rmaCases } = filteredData;
+
+  // Get unique sites for filter dropdown
+  const uniqueSites = useMemo(() => {
+    const sites = new Set<string>();
+    allDTRCases.forEach(dtr => sites.add(getSiteName(dtr.site)));
+    allRMACases.forEach(rma => sites.add(getRMASiteName(rma)));
+    return Array.from(sites).sort();
+  }, [allDTRCases, allRMACases]);
+
+  // Helper function to get engineer name from ID
+  const getEngineerName = (engineerId: string): string => {
+    if (!engineerId) return 'Unknown';
+    const user = users.find(u => u.id === engineerId);
+    if (user) return user.name || user.email || engineerId;
+    // If not found in users, check if it's already an email
+    if (engineerId.includes('@')) return engineerId;
+    return engineerId; // Fallback to ID if no match
+  };
+
+  // Get unique engineers for filter dropdown (with names)
+  const uniqueEngineers = useMemo(() => {
+    const engineerIds = new Set<string>();
+    allDTRCases.forEach(dtr => {
+      if (dtr.assignedTo) engineerIds.add(dtr.assignedTo);
+      if (dtr.createdBy) engineerIds.add(dtr.createdBy);
+    });
+    allRMACases.forEach(rma => {
+      if (rma.assignedTo) engineerIds.add(rma.assignedTo);
+      if (rma.createdBy) engineerIds.add(rma.createdBy);
+    });
+    
+    // Convert to array with names, sort by name
+    return Array.from(engineerIds)
+      .map(id => ({
+        id,
+        name: getEngineerName(id),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allDTRCases, allRMACases, users]);
 
   // Calculate days between dates (validates dates and ensures correct order)
   const daysBetween = (date1: string | null | undefined, date2: string | null | undefined): number | null => {
@@ -52,27 +144,148 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   // Get current date
   const today = new Date().toISOString().split('T')[0];
 
-  // Overdue Analysis - Updated to match real database statuses
+  // Generate time series data (monthly or quarterly)
+  const generateTimeSeriesData = (cases: any[], dateField: string, view: 'monthly' | 'quarterly', fallbackField?: string) => {
+    const dataMap = new Map<string, number>();
+
+    cases.forEach(caseItem => {
+      // Try primary date field first, then fallback
+      let date = caseItem[dateField];
+      if (!date && fallbackField) {
+        date = caseItem[fallbackField];
+      }
+      
+      // If still no date, skip this case
+      if (!date) return;
+
+      try {
+        const dateObj = new Date(date);
+        
+        // Check if date is valid
+        if (isNaN(dateObj.getTime())) return;
+
+        let key: string;
+
+        if (view === 'monthly') {
+          key = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+        } else {
+          const quarter = Math.floor(dateObj.getMonth() / 3) + 1;
+          key = `${dateObj.getFullYear()}-Q${quarter}`;
+        }
+
+        dataMap.set(key, (dataMap.get(key) || 0) + 1);
+      } catch (error) {
+        // Skip invalid dates
+        console.warn('Invalid date in time series:', date, error);
+        return;
+      }
+    });
+
+    // Convert to array and sort
+    const data = Array.from(dataMap.entries())
+      .map(([period, count]) => ({ period, count }))
+      .sort((a, b) => a.period.localeCompare(b.period));
+
+    return data;
+  };
+
+  // Time series data
+  const dtrTimeSeries = useMemo(() => 
+    generateTimeSeriesData(dtrCases, 'errorDate', timeView, 'createdDate'),
+    [dtrCases, timeView]
+  );
+
+  const rmaTimeSeries = useMemo(() => {
+    // Try multiple date fields: rmaRaisedDate -> createdAt -> customerErrorDate
+    let series = generateTimeSeriesData(rmaCases, 'rmaRaisedDate', timeView, 'createdAt');
+    
+    // If still no data, try customerErrorDate
+    if (series.length === 0 && rmaCases.length > 0) {
+      series = generateTimeSeriesData(rmaCases, 'customerErrorDate', timeView);
+    }
+    
+    // Debug: log RMA cases to see what dates are available (only in dev)
+    if (series.length === 0 && rmaCases.length > 0 && process.env.NODE_ENV === 'development') {
+      console.log('RMA Time Series Debug - Total RMA cases:', rmaCases.length);
+      console.log('RMA Cases sample:', rmaCases.slice(0, 5).map(r => ({
+        id: r.id,
+        rmaRaisedDate: r.rmaRaisedDate,
+        createdAt: r.createdAt,
+        customerErrorDate: r.customerErrorDate,
+        hasRmaRaisedDate: !!r.rmaRaisedDate,
+        hasCreatedAt: !!r.createdAt,
+        hasCustomerErrorDate: !!r.customerErrorDate,
+      })));
+    }
+    
+    return series;
+  }, [rmaCases, timeView]);
+
+  // Combined time series for comparison
+  const combinedTimeSeries = useMemo(() => {
+    const periods = new Set<string>();
+    dtrTimeSeries.forEach(d => periods.add(d.period));
+    rmaTimeSeries.forEach(r => periods.add(r.period));
+
+    return Array.from(periods)
+      .sort()
+      .map(period => ({
+        period,
+        dtr: dtrTimeSeries.find(d => d.period === period)?.count || 0,
+        rma: rmaTimeSeries.find(r => r.period === period)?.count || 0,
+      }));
+  }, [dtrTimeSeries, rmaTimeSeries]);
+
+  // Preset date ranges
+  const setPresetRange = (preset: '7d' | '30d' | '90d' | 'ytd' | 'all') => {
+    const today = new Date();
+    const from = new Date();
+
+    switch (preset) {
+      case '7d':
+        from.setDate(today.getDate() - 7);
+        break;
+      case '30d':
+        from.setDate(today.getDate() - 30);
+        break;
+      case '90d':
+        from.setDate(today.getDate() - 90);
+        break;
+      case 'ytd':
+        from.setMonth(0, 1); // January 1st
+        break;
+      case 'all':
+        setDateRange({ from: '', to: '' });
+        return;
+    }
+
+    setDateRange({
+      from: from.toISOString().split('T')[0],
+      to: today.toISOString().split('T')[0],
+    });
+  };
+
+  // Overdue Analysis
   const overdueReplacementShipping = rmaCases.filter(rma => {
     if (rma.status === 'closed' || rma.status === 'cancelled') return false;
-    if (rma.shippedDate) return false; // Already shipped
+    if (rma.shippedDate) return false;
     const daysSinceRaised = daysBetween(rma.rmaRaisedDate, today);
-    return daysSinceRaised > 30;
+    return daysSinceRaised !== null && daysSinceRaised > 30;
   });
 
   const overdueDefectiveReturn = rmaCases.filter(rma => {
     if (rma.status === 'closed' || rma.status === 'cancelled') return false;
-    if (!rma.shippedDate) return false; // Haven't shipped replacement yet
-    if (rma.returnShippedDate) return false; // Already received return
+    if (!rma.shippedDate) return false;
+    if (rma.returnShippedDate) return false;
     const daysSinceShipped = daysBetween(rma.shippedDate, today);
-    return daysSinceShipped > 30;
+    return daysSinceShipped !== null && daysSinceShipped > 30;
   });
 
   // DTR vs RMA counts
   const totalDTR = dtrCases.length;
   const totalRMA = rmaCases.length;
 
-  // Status breakdown - Updated to match real database statuses
+  // Status breakdown
   const dtrByStatus = [
     { name: 'Open', count: dtrCases.filter(d => d.callStatus === 'open').length, color: '#f59e0b' },
     { name: 'In Progress', count: dtrCases.filter(d => d.callStatus === 'in_progress').length, color: '#3b82f6' },
@@ -87,7 +300,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     { name: 'Closed', count: rmaCases.filter(r => r.status === 'closed').length, color: '#10b981' },
   ];
 
-  // RMA Type breakdown - Updated to match real database types
+  // RMA Type breakdown
   const rmaByType = [
     { name: 'RMA', count: rmaCases.filter(r => r.rmaType === 'RMA').length, color: '#3b82f6' },
     { name: 'SRMA', count: rmaCases.filter(r => r.rmaType === 'SRMA').length, color: '#8b5cf6' },
@@ -109,7 +322,9 @@ export function Analytics({ currentUser }: AnalyticsProps) {
 
   // Model-wise failure patterns
   const modelStats = dtrCases.reduce((acc, dtr) => {
-    acc[dtr.unitModel] = (acc[dtr.unitModel] || 0) + 1;
+    if (dtr.unitModel) {
+      acc[dtr.unitModel] = (acc[dtr.unitModel] || 0) + 1;
+    }
     return acc;
   }, {} as Record<string, number>);
 
@@ -119,11 +334,10 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     .slice(0, 5);
 
   // Turnaround time for closed RMAs
-  // Only calculate for RMAs with valid date pairs (rmaRaisedDate before shippedDate)
   const closedRMAsWithValidDates = rmaCases.filter(r => {
     if (r.status !== 'closed' || !r.shippedDate || !r.rmaRaisedDate) return false;
     const days = daysBetween(r.rmaRaisedDate, r.shippedDate);
-    return days !== null && days >= 0; // Only include valid, positive day differences
+    return days !== null && days >= 0;
   });
   
   const avgShippingTime = closedRMAsWithValidDates.length > 0
@@ -133,13 +347,13 @@ export function Analytics({ currentUser }: AnalyticsProps) {
           return sum + (days || 0);
         }, 0) / closedRMAsWithValidDates.length
       )
-    : null; // null means no valid data
+    : null;
 
-  // Average return time - only for valid date pairs (shippedDate before returnShippedDate)
+  // Average return time
   const closedRMAsWithValidReturnDates = rmaCases.filter(r => {
     if (r.status !== 'closed' || !r.shippedDate || !r.returnShippedDate) return false;
     const days = daysBetween(r.shippedDate, r.returnShippedDate);
-    return days !== null && days >= 0; // Only include valid, positive day differences
+    return days !== null && days >= 0;
   });
   
   const avgReturnTime = closedRMAsWithValidReturnDates.length > 0
@@ -149,7 +363,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
           return sum + (days || 0);
         }, 0) / closedRMAsWithValidReturnDates.length
       )
-    : null; // null means no valid data
+    : null;
 
   // Defective vs Replaced parts
   const defectivePartTypes = rmaCases.reduce((acc, rma) => {
@@ -176,18 +390,22 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   const exportToExcel = () => {
     const csv = [
       ['Analytics Report - Generated on ' + new Date().toLocaleString()],
+      ['Filters Applied:'],
+      [`Date Range: ${dateRange.from || 'All'} to ${dateRange.to || 'All'}`],
+      [`Site: ${selectedSite === 'all' ? 'All Sites' : selectedSite}`],
+      [`Engineer: ${selectedEngineer === 'all' ? 'All Engineers' : selectedEngineer}`],
       [],
       ['DTR Statistics'],
       ['Total DTR Cases', totalDTR],
       ['Open Cases', dtrCases.filter(d => d.callStatus === 'open').length],
-      ['In Progress', dtrCases.filter(d => d.callStatus === 'in-progress').length],
+      ['In Progress', dtrCases.filter(d => d.callStatus === 'in_progress').length],
       ['Closed Cases', dtrCases.filter(d => d.callStatus === 'closed').length],
       ['Escalated to RMA', dtrCases.filter(d => d.callStatus === 'escalated').length],
       [],
       ['RMA Statistics'],
       ['Total RMA Cases', totalRMA],
-      ['Pending RMAs', rmaCases.filter(r => r.status === 'pending').length],
-      ['Completed RMAs', rmaCases.filter(r => r.status === 'completed').length],
+      ['Open RMAs', rmaCases.filter(r => r.status === 'open').length],
+      ['Closed RMAs', rmaCases.filter(r => r.status === 'closed').length],
       ['Average Shipping Time (days)', avgShippingTime !== null ? avgShippingTime : 'No data'],
       ['Average Return Time (days)', avgReturnTime !== null ? avgReturnTime : 'No data'],
       [],
@@ -212,6 +430,8 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     a.click();
   };
 
+  const hasActiveFilters = dateRange.from || dateRange.to || selectedSite !== 'all' || selectedEngineer !== 'all';
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -231,10 +451,60 @@ export function Analytics({ currentUser }: AnalyticsProps) {
 
       {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-4 h-4 text-gray-600" />
-          <h3 className="text-gray-900">Filters</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-600" />
+            <h3 className="text-gray-900">Filters</h3>
+            {hasActiveFilters && (
+              <button
+                onClick={() => {
+                  setDateRange({ from: '', to: '' });
+                  setSelectedSite('all');
+                  setSelectedEngineer('all');
+                }}
+                className="ml-4 flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
+              >
+                <X className="w-3 h-3" />
+                Clear All
+              </button>
+            )}
+          </div>
         </div>
+        
+        {/* Preset Date Ranges */}
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            onClick={() => setPresetRange('7d')}
+            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+          >
+            Last 7 Days
+          </button>
+          <button
+            onClick={() => setPresetRange('30d')}
+            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+          >
+            Last 30 Days
+          </button>
+          <button
+            onClick={() => setPresetRange('90d')}
+            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+          >
+            Last 90 Days
+          </button>
+          <button
+            onClick={() => setPresetRange('ytd')}
+            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+          >
+            Year to Date
+          </button>
+          <button
+            onClick={() => setPresetRange('all')}
+            className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+          >
+            All Time
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm text-gray-700 mb-2">From Date</label>
@@ -262,7 +532,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Sites</option>
-              {Object.keys(siteStats).map(site => (
+              {uniqueSites.map(site => (
                 <option key={site} value={site}>{site}</option>
               ))}
             </select>
@@ -275,8 +545,9 @@ export function Analytics({ currentUser }: AnalyticsProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Engineers</option>
-              <option value="engineer@company.com">engineer@company.com</option>
-              <option value="staff@company.com">staff@company.com</option>
+              {uniqueEngineers.map(engineer => (
+                <option key={engineer.id} value={engineer.id}>{engineer.name}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -297,7 +568,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
                 <div className="mt-3 space-y-2">
                   {overdueReplacementShipping.slice(0, 3).map(rma => (
                     <div key={rma.id} className="text-xs text-gray-700 border-l-2 border-red-500 pl-2">
-                      {rma.rmaNumber} - {rma.siteName} ({daysBetween(rma.rmaRaisedDate, today)} days)
+                      {rma.rmaNumber ? `${rma.rmaNumber} - ` : ''}{getRMASiteName(rma)} ({daysBetween(rma.rmaRaisedDate, today)} days)
                     </div>
                   ))}
                 </div>
@@ -310,7 +581,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
                 <div className="mt-3 space-y-2">
                   {overdueDefectiveReturn.slice(0, 3).map(rma => (
                     <div key={rma.id} className="text-xs text-gray-700 border-l-2 border-red-500 pl-2">
-                      {rma.rmaNumber} - {rma.siteName} ({daysBetween(rma.shippedDate!, today)} days)
+                      {rma.rmaNumber ? `${rma.rmaNumber} - ` : ''}{getRMASiteName(rma)} ({daysBetween(rma.shippedDate!, today)} days)
                     </div>
                   ))}
                 </div>
@@ -324,24 +595,28 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <p className="text-sm text-gray-600 mb-2">Total DTR Cases</p>
-          <p className="text-blue-600">{totalDTR}</p>
-          <p className="text-xs text-gray-500 mt-2">All time</p>
+          <p className="text-2xl font-bold text-blue-600">{totalDTR}</p>
+          <p className="text-xs text-gray-500 mt-2">
+            {hasActiveFilters ? 'Filtered results' : 'All time'}
+          </p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <p className="text-sm text-gray-600 mb-2">Total RMA Cases</p>
-          <p className="text-purple-600">{totalRMA}</p>
-          <p className="text-xs text-gray-500 mt-2">All time</p>
+          <p className="text-2xl font-bold text-purple-600">{totalRMA}</p>
+          <p className="text-xs text-gray-500 mt-2">
+            {hasActiveFilters ? 'Filtered results' : 'All time'}
+          </p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <p className="text-sm text-gray-600 mb-2">Avg Shipping Time</p>
           {avgShippingTime !== null ? (
             <>
-              <p className="text-green-600 font-semibold">{avgShippingTime} days</p>
+              <p className="text-2xl font-bold text-green-600">{avgShippingTime} days</p>
               <p className="text-xs text-gray-500 mt-2">RMA raised to shipped</p>
             </>
           ) : (
             <>
-              <p className="text-gray-400 font-semibold">No data</p>
+              <p className="text-2xl font-bold text-gray-400">No data</p>
               <p className="text-xs text-gray-500 mt-2">Insufficient valid date data</p>
             </>
           )}
@@ -350,16 +625,76 @@ export function Analytics({ currentUser }: AnalyticsProps) {
           <p className="text-sm text-gray-600 mb-2">Avg Return Time</p>
           {avgReturnTime !== null ? (
             <>
-              <p className="text-orange-600 font-semibold">{avgReturnTime} days</p>
+              <p className="text-2xl font-bold text-orange-600">{avgReturnTime} days</p>
               <p className="text-xs text-gray-500 mt-2">Shipped to returned</p>
             </>
           ) : (
             <>
-              <p className="text-gray-400 font-semibold">No data</p>
+              <p className="text-2xl font-bold text-gray-400">No data</p>
               <p className="text-xs text-gray-500 mt-2">Insufficient valid date data</p>
             </>
           )}
         </div>
+      </div>
+
+      {/* Time Series Trends */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-gray-900">Case Volume Trends</h3>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setTimeView('monthly')}
+              className={`px-3 py-1 text-sm rounded transition-colors ${
+                timeView === 'monthly'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setTimeView('quarterly')}
+              className={`px-3 py-1 text-sm rounded transition-colors ${
+                timeView === 'quarterly'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Quarterly
+            </button>
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={combinedTimeSeries}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis 
+              dataKey="period" 
+              angle={-45} 
+              textAnchor="end" 
+              height={80}
+              interval={timeView === 'monthly' ? 2 : 0}
+            />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Line 
+              type="monotone" 
+              dataKey="dtr" 
+              stroke="#3b82f6" 
+              strokeWidth={2}
+              name="DTR Cases"
+              dot={{ r: 4 }}
+            />
+            <Line 
+              type="monotone" 
+              dataKey="rma" 
+              stroke="#8b5cf6" 
+              strokeWidth={2}
+              name="RMA Cases"
+              dot={{ r: 4 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Charts Row 1 */}

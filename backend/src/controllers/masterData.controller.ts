@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/response.util';
 import { prisma } from '../utils/prisma.util';
+import { AuthRequest } from '../middleware/auth.middleware';
 
 // ============================================
 // SITE CONTROLLERS
@@ -414,6 +415,120 @@ export async function deleteProjector(req: Request, res: Response) {
   } catch (error: any) {
     console.error('Delete projector error:', error);
     return sendError(res, 'Failed to delete projector', 500, error.message);
+  }
+}
+
+// ============================================
+// PROJECTOR TRANSFER CONTROLLER
+// ============================================
+
+// Transfer a projector from one audi/site to another
+export async function transferProjector(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params; // projectorId
+    const { toSiteId, toAudiId, reason } = req.body as {
+      toSiteId?: string;
+      toAudiId?: string;
+      reason?: string;
+    };
+
+    if (!toSiteId || !toAudiId) {
+      return sendError(res, 'Target site and audi are required', 400);
+    }
+
+    // 1. Verify projector exists
+    const projector = await prisma.projector.findUnique({
+      where: { id },
+    });
+
+    if (!projector) {
+      return sendError(res, 'Projector not found', 404);
+    }
+
+    // 2. Find current audi (if any)
+    const currentAudi = await prisma.audi.findFirst({
+      where: { projectorId: id },
+    });
+
+    // 3. Verify target audi and site
+    const targetAudi = await prisma.audi.findUnique({
+      where: { id: toAudiId },
+      include: { site: true },
+    });
+
+    if (!targetAudi) {
+      return sendError(res, 'Target audi not found', 404);
+    }
+
+    if (targetAudi.siteId !== toSiteId) {
+      return sendError(res, 'Target audi does not belong to the specified site', 400);
+    }
+
+    // 4. Ensure target audi is not already linked to a different projector
+    if (targetAudi.projectorId && targetAudi.projectorId !== id) {
+      return sendError(
+        res,
+        'Target audi already has a different projector assigned. Please clear it first or choose another audi.',
+        400
+      );
+    }
+
+    // 5. Perform transfer in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Clear projector from current audi, if any
+      if (currentAudi && currentAudi.id !== targetAudi.id) {
+        await tx.audi.update({
+          where: { id: currentAudi.id },
+          data: { projectorId: null },
+        });
+      }
+
+      // Assign projector to target audi
+      const updatedTargetAudi = await tx.audi.update({
+        where: { id: targetAudi.id },
+        data: { projectorId: id },
+        include: {
+          site: true,
+          projector: {
+            include: { projectorModel: true },
+          },
+        },
+      });
+
+      // Create transfer log
+      const transferLog = await tx.projectorTransfer.create({
+        data: {
+          projectorId: id,
+          fromSiteId: currentAudi ? currentAudi.siteId : null,
+          fromAudiId: currentAudi ? currentAudi.id : null,
+          toSiteId,
+          toAudiId,
+          movedBy: req.user?.userId || null,
+          reason: reason || null,
+        },
+      });
+
+      return { updatedTargetAudi, transferLog };
+    });
+
+    return sendSuccess(
+      res,
+      {
+        projectorId: id,
+        audi: result.updatedTargetAudi,
+        transfer: result.transferLog,
+      },
+      'Projector transferred successfully'
+    );
+  } catch (error: any) {
+    console.error('Transfer projector error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      meta: error.meta,
+      stack: error.stack,
+    });
+    return sendError(res, 'Failed to transfer projector', 500, error.message);
   }
 }
 

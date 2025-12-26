@@ -122,6 +122,14 @@ export const masterDataService = {
     return await api.delete(`/master-data/projectors/${id}`);
   },
 
+  // Transfer projector to another audi/site
+  async transferProjector(projectorId: string, payload: { toSiteId: string; toAudiId: string; reason?: string }) {
+    return await api.post<{ projectorId: string; audi: Audi; transfer: any }>(
+      `/master-data/projectors/${projectorId}/transfer`,
+      payload
+    );
+  },
+
   // Audis
   async getAllAudis(siteId?: string) {
     const query = siteId ? `?siteId=${siteId}` : '';

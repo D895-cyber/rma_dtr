@@ -342,20 +342,54 @@ async function importDTRCases(): Promise<ImportStats> {
         console.log(`   ℹ️  Auto-created projector: ${serialNumber}`);
       }
 
-      // Find the audi that has this projector
-      let audi = await prisma.audi.findFirst({
-        where: { projectorId: projector.id },
-        include: { site: true },
-      });
-
+      // Find the audi - try multiple methods
+      let audi: any = null;
+      
+      // Method 1: Try to find by site name and audi number from DTR data (if available)
+      if (row.siteName && row.audiNo) {
+        const site = await prisma.site.findFirst({
+          where: { siteName: String(row.siteName).trim() },
+        });
+        if (site) {
+          const audiNo = String(row.audiNo).trim();
+          audi = await prisma.audi.findFirst({
+            where: {
+              siteId: site.id,
+              audiNo: audiNo,
+            },
+            include: { site: true },
+          });
+          if (audi) {
+            // Update audi to link this projector if not already linked
+            if (!audi.projectorId) {
+              audi = await prisma.audi.update({
+                where: { id: audi.id },
+                data: { projectorId: projector.id },
+                include: { site: true },
+              });
+              console.log(`   ℹ️  Linked projector ${serialNumber} to existing audi ${audiNo} at ${row.siteName}`);
+            }
+          }
+        }
+      }
+      
+      // Method 2: Try to find by projector ID
       if (!audi) {
-        // Auto-create audi if it doesn't exist - DTR needs an audi
+        audi = await prisma.audi.findFirst({
+          where: { projectorId: projector.id },
+          include: { site: true },
+        });
+      }
+
+      // Method 3: Auto-create audi if it doesn't exist - DTR needs an audi
+      if (!audi) {
         // Try to find site from row data or use first available site
         let siteId: string | undefined;
+        let audiNo: string | undefined;
         
         if (row.siteName) {
           const site = await prisma.site.findFirst({
-            where: { siteName: row.siteName },
+            where: { siteName: String(row.siteName).trim() },
           });
           if (site) {
             siteId = site.id;
@@ -370,19 +404,50 @@ async function importDTRCases(): Promise<ImportStats> {
           siteId = defaultSite.id;
         }
         
-        // Generate a unique audiNo
-        const audiCount = await prisma.audi.count();
-        const audiNo = `AUTO-${audiCount + 1}`;
+        // Try to use audi number from DTR data if available
+        if (row.audiNo) {
+          audiNo = String(row.audiNo).trim();
+          // Check if this audi already exists at this site
+          const existingAudi = await prisma.audi.findFirst({
+            where: {
+              siteId: siteId,
+              audiNo: audiNo,
+            },
+          });
+          if (existingAudi) {
+            // Link projector to existing audi
+            audi = await prisma.audi.update({
+              where: { id: existingAudi.id },
+              data: { projectorId: projector.id },
+              include: { site: true },
+            });
+            console.log(`   ℹ️  Linked projector ${serialNumber} to existing audi ${audiNo}`);
+          }
+        }
         
-        audi = await prisma.audi.create({
-          data: {
-            siteId: siteId,
-            audiNo: audiNo,
-            projectorId: projector.id,
-          },
-          include: { site: true },
-        });
-        console.log(`   ℹ️  Auto-created audi: ${audiNo} for projector ${serialNumber}`);
+        // If still no audi, create a new one
+        if (!audi) {
+          // Use audi number from data, or generate AUTO-XXX
+          if (!audiNo) {
+            const audiCount = await prisma.audi.count();
+            audiNo = `AUTO-${audiCount + 1}`;
+          }
+          
+          audi = await prisma.audi.create({
+            data: {
+              siteId: siteId,
+              audiNo: audiNo,
+              projectorId: projector.id,
+            },
+            include: { site: true },
+          });
+          console.log(`   ℹ️  ${audiNo.startsWith('AUTO-') ? 'Auto-created' : 'Created'} audi: ${audiNo} for projector ${serialNumber}`);
+        }
+      }
+      
+      // Ensure audi is not null at this point
+      if (!audi) {
+        throw new Error('Failed to find or create audi for DTR case');
       }
 
       // Find creator user

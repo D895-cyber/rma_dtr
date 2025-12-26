@@ -24,14 +24,26 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
   };
 
   // Helper function to get user name from ID or email
-  const getUserName = (userOrId: string | null | undefined): string => {
+  const getUserName = (userOrId: string | null | undefined | any): string => {
     if (!userOrId) return 'Unassigned';
+    
+    // If it's an object, extract email or id
+    if (typeof userOrId === 'object' && userOrId !== null) {
+      const emailOrId = userOrId.email || userOrId.id || '';
+      if (emailOrId) {
+        return getUserName(emailOrId); // Recursively call with the extracted value
+      }
+      return 'Unassigned';
+    }
+    
+    // Ensure it's a string before calling includes
+    const userOrIdStr = typeof userOrId === 'string' ? userOrId : String(userOrId);
     // If it's an email, return it
-    if (userOrId.includes('@')) return userOrId;
+    if (userOrIdStr.includes('@')) return userOrIdStr;
     // If it's a UUID, find the user
-    const user = users.find((u: any) => u.id === userOrId);
-    if (user) return user.name || user.email || userOrId;
-    return userOrId;
+    const user = users.find((u: any) => u.id === userOrIdStr);
+    if (user) return user.name || user.email || userOrIdStr;
+    return userOrIdStr;
   };
 
   // Helper function to safely get audi number
@@ -58,12 +70,14 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
   // Helper to get assignedTo email from UUID or email
   const getAssignedToEmail = (assignedTo: string | null | undefined): string => {
     if (!assignedTo) return '';
+    // Ensure it's a string before calling includes
+    const assignedToStr = typeof assignedTo === 'string' ? assignedTo : String(assignedTo);
     // If it's already an email, return it
-    if (assignedTo.includes('@')) return assignedTo;
+    if (assignedToStr.includes('@')) return assignedToStr;
     // If it's a UUID, find the user and return their email
-    const user = users.find((u: any) => u.id === assignedTo);
-    if (user) return user.email || assignedTo;
-    return assignedTo;
+    const user = users.find((u: any) => u.id === assignedToStr);
+    if (user) return user.email || assignedToStr;
+    return assignedToStr;
   };
   
   const [formData, setFormData] = useState({
@@ -75,10 +89,13 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
 
   // Update assignedTo when users load (in case users weren't loaded when formData was initialized)
   useEffect(() => {
-    if (users.length > 0 && formData.assignedTo && !formData.assignedTo.includes('@')) {
-      const email = getAssignedToEmail(formData.assignedTo);
-      if (email !== formData.assignedTo) {
-        setFormData(prev => ({ ...prev, assignedTo: email }));
+    if (users.length > 0 && formData.assignedTo) {
+      const assignedToStr = typeof formData.assignedTo === 'string' ? formData.assignedTo : String(formData.assignedTo);
+      if (!assignedToStr.includes('@')) {
+        const email = getAssignedToEmail(assignedToStr);
+        if (email !== assignedToStr) {
+          setFormData(prev => ({ ...prev, assignedTo: email }));
+        }
       }
     }
   }, [users, dtr.assignedTo, dtr.assignee]);
@@ -366,7 +383,7 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
               <label className="block text-sm text-gray-700 mb-2">Assigned To Engineer</label>
               {isEditing ? (
                 <select
-                  value={formData.assignedTo || ''}
+                  value={typeof formData.assignedTo === 'string' ? formData.assignedTo : ''}
                   onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
@@ -377,7 +394,7 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
                     </option>
                   ))}
                   {/* Fallback: if assignedTo is a UUID that doesn't match any engineer, show it as an option */}
-                  {formData.assignedTo && !formData.assignedTo.includes('@') && !engineers.find(e => e.id === formData.assignedTo) && (
+                  {formData.assignedTo && typeof formData.assignedTo === 'string' && !formData.assignedTo.includes('@') && !engineers.find(e => e.id === formData.assignedTo) && (
                     <option value={formData.assignedTo} disabled>
                       {getUserName(formData.assignedTo)} (UUID - Select valid engineer)
                     </option>
@@ -385,7 +402,7 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
                 </select>
               ) : (
                 <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">
-                  {getUserName(formData.assignee || formData.assignedTo)}
+                  {getUserName((formData.assignee && typeof formData.assignee === 'object' ? formData.assignee.email || formData.assignee.id : formData.assignee) || formData.assignedTo)}
                 </p>
               )}
             </div>

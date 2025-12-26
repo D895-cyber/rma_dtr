@@ -88,7 +88,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     const user = users.find(u => u.id === engineerId);
     if (user) return user.name || user.email || engineerId;
     // If not found in users, check if it's already an email
-    if (engineerId.includes('@')) return engineerId;
+    if (typeof engineerId === 'string' && engineerId.includes('@')) return engineerId;
     return engineerId; // Fallback to ID if no match
   };
 

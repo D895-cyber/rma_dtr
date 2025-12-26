@@ -24,12 +24,14 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
   // Helper function to get user email from ID or return email if already email
   const getUserEmail = (userOrId: string | null | undefined): string => {
     if (!userOrId) return '';
+    // Ensure it's a string before calling includes
+    const userOrIdStr = typeof userOrId === 'string' ? userOrId : String(userOrId);
     // If it's already an email, return it
-    if (userOrId.includes('@')) return userOrId;
+    if (userOrIdStr.includes('@')) return userOrIdStr;
     // If it's a UUID, find the user and return their email
-    const user = users.find((u: any) => u.id === userOrId);
-    if (user) return user.email || userOrId;
-    return userOrId;
+    const user = users.find((u: any) => u.id === userOrIdStr);
+    if (user) return user.email || userOrIdStr;
+    return userOrIdStr;
   };
   
   // Helper function to format date for HTML date input (yyyy-MM-dd)
@@ -57,16 +59,26 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
   // Helper to get assignedTo email from UUID or email
   const getAssignedToEmail = (assignedTo: string | null | undefined): string => {
     if (!assignedTo) return '';
+    // Ensure it's a string before calling includes
+    const assignedToStr = typeof assignedTo === 'string' ? assignedTo : String(assignedTo);
     // If it's already an email, return it
-    if (assignedTo.includes('@')) return assignedTo;
+    if (assignedToStr.includes('@')) return assignedToStr;
     // If it's a UUID, find the user and return their email
-    const user = users.find((u: any) => u.id === assignedTo);
-    if (user) return user.email || assignedTo;
-    return assignedTo;
+    const user = users.find((u: any) => u.id === assignedToStr);
+    if (user) return user.email || assignedToStr;
+    return assignedToStr;
   };
   
   // Track original assignment value - convert UUID to email if needed
-  const originalAssignedTo = (rma as any).assignee?.email || getAssignedToEmail(rma.assignedTo) || '';
+  const originalAssignedTo = (() => {
+    const assignedToValue = (rma as any).assignee?.email || rma.assignedTo;
+    if (!assignedToValue) return '';
+    // If it's an object, extract email or id
+    if (typeof assignedToValue === 'object' && assignedToValue !== null) {
+      return assignedToValue.email || assignedToValue.id || '';
+    }
+    return getAssignedToEmail(assignedToValue) || '';
+  })();
   
   const [formData, setFormData] = useState({
     ...rma,
@@ -101,10 +113,13 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
 
   // Update assignedTo when users load (in case users weren't loaded when formData was initialized)
   useEffect(() => {
-    if (users.length > 0 && formData.assignedTo && !formData.assignedTo.includes('@')) {
-      const email = getAssignedToEmail(formData.assignedTo);
-      if (email !== formData.assignedTo && email) {
-        setFormData(prev => ({ ...prev, assignedTo: email }));
+    if (users.length > 0 && formData.assignedTo) {
+      const assignedToStr = typeof formData.assignedTo === 'string' ? formData.assignedTo : String(formData.assignedTo);
+      if (!assignedToStr.includes('@')) {
+        const email = getAssignedToEmail(assignedToStr);
+        if (email !== assignedToStr && email) {
+          setFormData(prev => ({ ...prev, assignedTo: email }));
+        }
       }
     }
   }, [users, rma.assignedTo, (rma as any).assignee]);
@@ -498,9 +513,10 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
             <label className="block text-sm text-gray-700 mb-2">Assigned To Engineer</label>
             <div className="space-y-2">
               <select
-                value={formData.assignedTo || ''}
+                value={typeof formData.assignedTo === 'string' ? formData.assignedTo : ''}
                 onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={!isEditing}
               >
                 <option value="">Unassigned</option>
                 {engineers.map(engineer => (
@@ -509,7 +525,7 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
                   </option>
                 ))}
                 {/* Fallback: if assignedTo is a UUID that doesn't match any engineer, show it as an option */}
-                {formData.assignedTo && !formData.assignedTo.includes('@') && !engineers.find(e => e.id === formData.assignedTo || e.email === formData.assignedTo) && (
+                {formData.assignedTo && typeof formData.assignedTo === 'string' && !formData.assignedTo.includes('@') && !engineers.find(e => e.id === formData.assignedTo || e.email === formData.assignedTo) && (
                   <option value={formData.assignedTo} disabled>
                     {getUserEmail(formData.assignedTo) || formData.assignedTo} (UUID - Select valid engineer)
                   </option>

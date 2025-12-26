@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Edit, Check, Package, Truck, History, Mail } from 'lucide-react';
 import { RMACase, useUsersAPI } from '../hooks/useAPI';
 import rmaService from '../services/rma.service';
@@ -11,7 +11,7 @@ interface RMADetailProps {
 }
 
 export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProps) {
-  const { getEngineersList } = useUsersAPI();
+  const { getEngineersList, users } = useUsersAPI();
   const engineers = getEngineersList();
   
   // Helper function to safely get audi number
@@ -19,6 +19,17 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
     if (data.audi && data.audi.audiNo) return data.audi.audiNo;
     if (data.audiNo) return data.audiNo;
     return '';
+  };
+
+  // Helper function to get user email from ID or return email if already email
+  const getUserEmail = (userOrId: string | null | undefined): string => {
+    if (!userOrId) return '';
+    // If it's already an email, return it
+    if (userOrId.includes('@')) return userOrId;
+    // If it's a UUID, find the user and return their email
+    const user = users.find((u: any) => u.id === userOrId);
+    if (user) return user.email || userOrId;
+    return userOrId;
   };
   
   // Helper function to format date for HTML date input (yyyy-MM-dd)
@@ -42,8 +53,21 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
   const [sendingClientEmail, setSendingClientEmail] = useState(false);
   // Track original DNR value to detect changes
   const originalDNRValue = rma.isDefectivePartDNR === true || false;
-  // Track original assignment value
-  const originalAssignedTo = (rma as any).assignee?.email || rma.assignedTo || '';
+  
+  // Helper to get assignedTo email from UUID or email
+  const getAssignedToEmail = (assignedTo: string | null | undefined): string => {
+    if (!assignedTo) return '';
+    // If it's already an email, return it
+    if (assignedTo.includes('@')) return assignedTo;
+    // If it's a UUID, find the user and return their email
+    const user = users.find((u: any) => u.id === assignedTo);
+    if (user) return user.email || assignedTo;
+    return assignedTo;
+  };
+  
+  // Track original assignment value - convert UUID to email if needed
+  const originalAssignedTo = (rma as any).assignee?.email || getAssignedToEmail(rma.assignedTo) || '';
+  
   const [formData, setFormData] = useState({
     ...rma,
     // Ensure siteId and audiId are extracted from nested objects
@@ -61,7 +85,7 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
     returnShippedDate: formatDateForInput(rma.returnShippedDate),
     // Ensure isDefectivePartDNR is explicitly set as boolean
     isDefectivePartDNR: originalDNRValue,
-    // Ensure assignedTo is set from nested assignee object if needed
+    // Ensure assignedTo is set from nested assignee object if needed, and convert UUID to email
     assignedTo: originalAssignedTo,
   });
   
@@ -74,6 +98,16 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
   // Check if assignment has changed from original
   const currentAssignedTo = formData.assignedTo || '';
   const assignmentHasChanged = currentAssignedTo !== originalAssignedTo;
+
+  // Update assignedTo when users load (in case users weren't loaded when formData was initialized)
+  useEffect(() => {
+    if (users.length > 0 && formData.assignedTo && !formData.assignedTo.includes('@')) {
+      const email = getAssignedToEmail(formData.assignedTo);
+      if (email !== formData.assignedTo && email) {
+        setFormData(prev => ({ ...prev, assignedTo: email }));
+      }
+    }
+  }, [users, rma.assignedTo, (rma as any).assignee]);
 
   // Quick save function for DNR status only
   const handleSaveDNR = async () => {
@@ -474,6 +508,12 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
                     {engineer.name} ({engineer.email})
                   </option>
                 ))}
+                {/* Fallback: if assignedTo is a UUID that doesn't match any engineer, show it as an option */}
+                {formData.assignedTo && !formData.assignedTo.includes('@') && !engineers.find(e => e.id === formData.assignedTo || e.email === formData.assignedTo) && (
+                  <option value={formData.assignedTo} disabled>
+                    {getUserEmail(formData.assignedTo) || formData.assignedTo} (UUID - Select valid engineer)
+                  </option>
+                )}
               </select>
               {/* Save button appears when assignment changes */}
               {assignmentHasChanged && (

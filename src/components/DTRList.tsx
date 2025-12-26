@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Search, Filter, Download, Eye } from 'lucide-react';
-import { useDTRCases } from '../hooks/useAPI';
+import { useDTRCases, useUsersAPI } from '../hooks/useAPI';
 import { DTRForm } from './DTRForm';
 import { DTRDetail } from './DTRDetail';
 
@@ -10,6 +10,7 @@ interface DTRListProps {
 
 export function DTRList({ currentUser }: DTRListProps) {
   const { cases: dtrCases, loading, error, createCase, updateCase } = useDTRCases();
+  const { users } = useUsersAPI();
   const [showForm, setShowForm] = useState(false);
   const [selectedDTR, setSelectedDTR] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,6 +22,31 @@ export function DTRList({ currentUser }: DTRListProps) {
     if (typeof site === 'string') return site;
     if (site && typeof site === 'object' && site.siteName) return site.siteName;
     return '';
+  };
+
+  // Helper function to get user name from ID, email, or user object
+  const getUserName = (userOrId: any): string => {
+    if (!userOrId) return 'Unassigned';
+    
+    // If it's a user object with name or email
+    if (typeof userOrId === 'object' && userOrId !== null) {
+      if (userOrId.name) return userOrId.name;
+      if (userOrId.email) return userOrId.email.split('@')[0];
+      return 'Unassigned';
+    }
+    
+    // If it's an email string
+    if (typeof userOrId === 'string' && userOrId.includes('@')) {
+      return userOrId.split('@')[0];
+    }
+    
+    // If it's a UUID, find the user
+    if (typeof userOrId === 'string') {
+      const user = users.find((u: any) => u.id === userOrId);
+      if (user) return user.name || user.email?.split('@')[0] || userOrId;
+    }
+    
+    return userOrId || 'Unassigned';
   };
 
   // Helper function to format date for display
@@ -277,7 +303,7 @@ export function DTRList({ currentUser }: DTRListProps) {
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-sm text-gray-600">
-                      {dtr.assignedTo ? dtr.assignedTo.split('@')[0] : 'Unassigned'}
+                      {getUserName(dtr.assignee || dtr.assignedTo)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

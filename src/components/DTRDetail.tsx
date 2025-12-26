@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Edit, Check, AlertCircle, ArrowRight, History } from 'lucide-react';
 import { DTRCase, useUsersAPI, useRMACases, useDTRCases } from '../hooks/useAPI';
 import { dtrService } from '../services/dtr.service';
@@ -11,7 +11,7 @@ interface DTRDetailProps {
 }
 
 export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProps) {
-  const { getEngineersList } = useUsersAPI();
+  const { getEngineersList, users } = useUsersAPI();
   const { createCase: createRMACase } = useRMACases();
   const { loadCases } = useDTRCases();
   const engineers = getEngineersList();
@@ -21,6 +21,17 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
     if (typeof site === 'string') return site;
     if (site && typeof site === 'object' && site.siteName) return site.siteName;
     return '';
+  };
+
+  // Helper function to get user name from ID or email
+  const getUserName = (userOrId: string | null | undefined): string => {
+    if (!userOrId) return 'Unassigned';
+    // If it's an email, return it
+    if (userOrId.includes('@')) return userOrId;
+    // If it's a UUID, find the user
+    const user = users.find((u: any) => u.id === userOrId);
+    if (user) return user.name || user.email || userOrId;
+    return userOrId;
   };
 
   // Helper function to safely get audi number
@@ -43,10 +54,34 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
   
   const [isEditing, setIsEditing] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
+  
+  // Helper to get assignedTo email from UUID or email
+  const getAssignedToEmail = (assignedTo: string | null | undefined): string => {
+    if (!assignedTo) return '';
+    // If it's already an email, return it
+    if (assignedTo.includes('@')) return assignedTo;
+    // If it's a UUID, find the user and return their email
+    const user = users.find((u: any) => u.id === assignedTo);
+    if (user) return user.email || assignedTo;
+    return assignedTo;
+  };
+  
   const [formData, setFormData] = useState({
     ...dtr,
     errorDate: formatDateForInput(dtr.errorDate),
+    // Convert assignedTo UUID to email if needed
+    assignedTo: getAssignedToEmail(dtr.assignee?.email || dtr.assignedTo) || '',
   });
+
+  // Update assignedTo when users load (in case users weren't loaded when formData was initialized)
+  useEffect(() => {
+    if (users.length > 0 && formData.assignedTo && !formData.assignedTo.includes('@')) {
+      const email = getAssignedToEmail(formData.assignedTo);
+      if (email !== formData.assignedTo) {
+        setFormData(prev => ({ ...prev, assignedTo: email }));
+      }
+    }
+  }, [users, dtr.assignedTo, dtr.assignee]);
 
   const handleUpdate = () => {
     onUpdate(dtr.id, formData, currentUser.email, 'Updated', 'Case details updated');
@@ -341,10 +376,16 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
                       {engineer.name} ({engineer.email})
                     </option>
                   ))}
+                  {/* Fallback: if assignedTo is a UUID that doesn't match any engineer, show it as an option */}
+                  {formData.assignedTo && !formData.assignedTo.includes('@') && !engineers.find(e => e.id === formData.assignedTo) && (
+                    <option value={formData.assignedTo} disabled>
+                      {getUserName(formData.assignedTo)} (UUID - Select valid engineer)
+                    </option>
+                  )}
                 </select>
               ) : (
                 <p className="text-gray-900 px-4 py-2 bg-gray-50 rounded-lg">
-                  {formData.assignedTo || 'Unassigned'}
+                  {getUserName(formData.assignee || formData.assignedTo)}
                 </p>
               )}
             </div>

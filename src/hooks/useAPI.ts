@@ -267,7 +267,7 @@ export function useUsersAPI() {
   }, [loadUsers]);
 
   const getEngineersList = () => {
-    return users.filter(u => u.role === 'engineer' && u.isActive);
+    return users.filter(u => u.role === 'engineer' && (u.active !== false));
   };
 
   const createUser = async (data: any) => {

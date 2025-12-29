@@ -181,8 +181,11 @@ model DtrCase {
   closer           User?          @relation("DtrClosedBy", fields: [closedBy], references: [id])
 
   @@index([callStatus])
+  @@index([caseSeverity])
   @@index([assignedTo])
   @@index([createdAt])
+  @@index([caseNumber])
+  @@index([siteId, audiId]) // Composite index for common queries
   @@map("dtr_cases")
 }
 
@@ -248,7 +251,11 @@ model RmaCase {
   @@index([status])
   @@index([assignedTo])
   @@index([createdAt])
+  @@index([rmaRaisedDate])
   @@index([rmaNumber])
+  @@index([productPartNumber])
+  @@index([defectivePartNumber])
+  @@index([status, assignedTo]) // Composite index for common queries
   @@map("rma_cases")
 }
 

@@ -30,7 +30,7 @@ import {
   deleteProjectorModel,
 } from '../controllers/projectorModel.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
-import { requireRole } from '../middleware/role.middleware';
+import { requirePermission } from '../middleware/role.middleware';
 
 const router = Router();
 
@@ -38,34 +38,34 @@ const router = Router();
 router.use(authenticateToken);
 
 // Site routes
-router.get('/sites', getAllSites);
-router.get('/sites/:id', getSiteById);
-router.post('/sites', createSite);
-router.put('/sites/:id', updateSite);
-router.delete('/sites/:id', deleteSite);
+router.get('/sites', requirePermission('master:view'), getAllSites);
+router.get('/sites/:id', requirePermission('master:view'), getSiteById);
+router.post('/sites', requirePermission('master:create'), createSite);
+router.put('/sites/:id', requirePermission('master:update'), updateSite);
+router.delete('/sites/:id', requirePermission('master:delete'), deleteSite);
 
 // Audi routes
-router.get('/audis', getAllAudis);
-router.get('/audis/:id', getAudiById);
-router.post('/audis', createAudi);
-router.put('/audis/:id', updateAudi);
-router.delete('/audis/:id', deleteAudi);
+router.get('/audis', requirePermission('master:view'), getAllAudis);
+router.get('/audis/:id', requirePermission('master:view'), getAudiById);
+router.post('/audis', requirePermission('master:create'), createAudi);
+router.put('/audis/:id', requirePermission('master:update'), updateAudi);
+router.delete('/audis/:id', requirePermission('master:delete'), deleteAudi);
 
 // Projector Model routes (catalog)
-router.get('/projector-models', getAllProjectorModels);
-router.get('/projector-models/model/:modelNo', getProjectorModelByModelNo);
-router.get('/projector-models/:id', getProjectorModelById);
-router.post('/projector-models', requireRole('admin', 'manager'), createProjectorModel);
-router.put('/projector-models/:id', requireRole('admin', 'manager'), updateProjectorModel);
-router.delete('/projector-models/:id', requireRole('admin'), deleteProjectorModel);
+router.get('/projector-models', requirePermission('models:view'), getAllProjectorModels);
+router.get('/projector-models/model/:modelNo', requirePermission('models:view'), getProjectorModelByModelNo);
+router.get('/projector-models/:id', requirePermission('models:view'), getProjectorModelById);
+router.post('/projector-models', requirePermission('models:create'), createProjectorModel);
+router.put('/projector-models/:id', requirePermission('models:update'), updateProjectorModel);
+router.delete('/projector-models/:id', requirePermission('models:delete'), deleteProjectorModel);
 
 // Projector routes (physical units)
-router.get('/projectors', getAllProjectors);
-router.get('/projectors/:id', getProjectorById);
-router.post('/projectors', requireRole('admin', 'manager'), createProjector);
-router.put('/projectors/:id', requireRole('admin', 'manager'), updateProjector);
-router.delete('/projectors/:id', requireRole('admin'), deleteProjector);
-router.post('/projectors/:id/transfer', requireRole('admin', 'manager'), transferProjector);
+router.get('/projectors', requirePermission('master:view'), getAllProjectors);
+router.get('/projectors/:id', requirePermission('master:view'), getProjectorById);
+router.post('/projectors', requirePermission('master:create'), createProjector);
+router.put('/projectors/:id', requirePermission('master:update'), updateProjector);
+router.delete('/projectors/:id', requirePermission('master:delete'), deleteProjector);
+router.post('/projectors/:id/transfer', requirePermission('master:update'), transferProjector);
 
 export default router;
 

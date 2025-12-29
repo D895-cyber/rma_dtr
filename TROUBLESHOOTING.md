@@ -130,3 +130,7 @@ npx prisma migrate deploy
 4. Check if database requires SSL connections
 
 
+
+
+
+

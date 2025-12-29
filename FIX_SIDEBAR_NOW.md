@@ -101,3 +101,7 @@ The code is **100% correct**. The sidebar should render. If you're still seeing 
 
 **The fix is in the code. The issue is browser cache.**
 
+
+
+
+

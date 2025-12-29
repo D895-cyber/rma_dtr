@@ -26,23 +26,6 @@ export function AuthScreen() {
     }
   };
 
-  const quickLogin = async (userEmail: string, userPassword: string) => {
-    setEmail(userEmail);
-    setPassword(userPassword);
-    setError('');
-    setIsLoading(true);
-
-    try {
-      const result = await login(userEmail, userPassword);
-      if (!result.success) {
-        setError(result.message || 'Login failed');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Login error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center p-4">
@@ -108,21 +91,6 @@ export function AuthScreen() {
               {isLoading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-        </div>
-
-        {/* Quick Login Options */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <p className="text-sm text-gray-600 mb-2">Quick Login (Test Account):</p>
-          <p className="text-xs text-gray-500 mb-4">
-            Email: <span className="font-mono">admin@crm.com</span> | Password: <span className="font-mono">Admin@123</span>
-          </p>
-          <button
-            onClick={() => quickLogin('admin@crm.com', 'Admin@123')}
-            disabled={isLoading}
-            className="w-full px-4 py-2.5 bg-blue-100 hover:bg-blue-200 rounded-lg text-sm text-blue-700 font-medium transition-colors disabled:opacity-50"
-          >
-            {isLoading ? 'Logging in...' : 'Login as Admin'}
-          </button>
         </div>
       </div>
     </div>

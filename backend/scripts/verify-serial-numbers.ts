@@ -196,3 +196,7 @@ verifySerialNumbers()
     await prisma.$disconnect();
   });
 
+
+
+
+

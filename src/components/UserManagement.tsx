@@ -1,18 +1,23 @@
 import React, { useState } from 'react';
-import { Plus, Edit2, Trash2, Users, UserCheck, UserX, X, Mail, Shield } from 'lucide-react';
+import { Plus, Edit2, Trash2, Users, UserCheck, UserX, X, Mail, Shield, Key } from 'lucide-react';
 import { useUsersAPI, User } from '../hooks/useAPI';
+import { ProtectedComponent } from './ProtectedComponent';
 
 interface UserManagementProps {
   currentUser: any;
 }
 
 export function UserManagement({ currentUser }: UserManagementProps) {
-  const { users, loading, loadUsers, createUser, updateUser, deleteUser } = useUsersAPI();
+  const { users, loading, loadUsers, createUser, updateUser, deleteUser, resetPassword } = useUsersAPI();
   
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [filterRole, setFilterRole] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
+  const [resettingUser, setResettingUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const [userFormData, setUserFormData] = useState({
     name: '',
@@ -63,13 +68,48 @@ export function UserManagement({ currentUser }: UserManagementProps) {
   };
 
   const handleDeleteUser = async (userId: string, userName: string) => {
-    if (confirm(`Delete user "${userName}"? This action cannot be undone.`)) {
+    if (confirm(`Delete user "${userName}"? This action cannot be undone.\n\nNote: If the user has related records (DTR/RMA cases), they will be deactivated instead of deleted.`)) {
       const result = await deleteUser(userId);
       if (result.success) {
         await loadUsers();
+        // Show success message
+        const message = result.message || 'User deleted successfully';
+        alert(message);
       } else {
         alert(result.message || 'Failed to delete user');
       }
+    }
+  };
+
+  const openResetPasswordDialog = (user: User) => {
+    setResettingUser(user);
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowResetPasswordDialog(true);
+  };
+
+  const handleResetPassword = async () => {
+    if (!resettingUser) return;
+
+    if (!newPassword || newPassword.length < 8) {
+      alert('Password must be at least 8 characters long');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert('Passwords do not match');
+      return;
+    }
+
+    const result = await resetPassword(resettingUser.id, newPassword);
+    if (result.success) {
+      alert(result.message || `Password reset successfully for ${resettingUser.name}`);
+      setShowResetPasswordDialog(false);
+      setResettingUser(null);
+      setNewPassword('');
+      setConfirmPassword('');
+    } else {
+      alert(result.message || 'Failed to reset password');
     }
   };
 
@@ -115,13 +155,15 @@ export function UserManagement({ currentUser }: UserManagementProps) {
           <h2 className="text-gray-900 mb-1">User Management</h2>
           <p className="text-sm text-gray-600">Manage system users and their roles</p>
         </div>
-        <button
-          onClick={openAddUserForm}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add User
-        </button>
+        <ProtectedComponent permission="users:create">
+          <button
+            onClick={openAddUserForm}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add User
+          </button>
+        </ProtectedComponent>
       </div>
 
       {/* User Form Dialog */}
@@ -212,6 +254,76 @@ export function UserManagement({ currentUser }: UserManagementProps) {
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   {editingUser ? 'Update' : 'Add'} User
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Dialog */}
+      {showResetPasswordDialog && resettingUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-gray-900">Reset Password</h3>
+              <button 
+                onClick={() => {
+                  setShowResetPasswordDialog(false);
+                  setResettingUser(null);
+                  setNewPassword('');
+                  setConfirmPassword('');
+                }} 
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-700">
+                  Reset password for <strong>{resettingUser.name}</strong> ({resettingUser.email})
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-2">New Password *</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter new password (min. 8 characters)"
+                  autoFocus
+                />
+                <p className="text-xs text-gray-500 mt-1">Password must be at least 8 characters long</p>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-2">Confirm Password *</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Confirm new password"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowResetPasswordDialog(false);
+                    setResettingUser(null);
+                    setNewPassword('');
+                    setConfirmPassword('');
+                  }}
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleResetPassword}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Reset Password
                 </button>
               </div>
             </div>
@@ -325,26 +437,49 @@ export function UserManagement({ currentUser }: UserManagementProps) {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm text-gray-600">
-                        {new Date(user.createdDate).toLocaleDateString()}
+                        {user.createdAt 
+                          ? new Date(user.createdAt).toLocaleDateString('en-US', { 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric' 
+                            })
+                          : 'N/A'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => openEditUserForm(user)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                          title="Edit User"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(user.id, user.name)}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                          title="Delete User"
-                          disabled={user.email === currentUser.email}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <ProtectedComponent permission="users:update">
+                          <button
+                            onClick={() => openEditUserForm(user)}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="Edit User"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        </ProtectedComponent>
+                        <ProtectedComponent permission="users:resetPassword">
+                          <button
+                            onClick={() => openResetPasswordDialog(user)}
+                            className="p-1.5 text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                            title="Reset Password"
+                          >
+                            <Key className="w-4 h-4" />
+                          </button>
+                        </ProtectedComponent>
+                        <ProtectedComponent permission="users:delete">
+                          <button
+                            onClick={() => handleDeleteUser(user.id, user.name)}
+                            className={`p-1.5 rounded transition-colors ${
+                              user.email === currentUser.email
+                                ? 'text-gray-400 cursor-not-allowed'
+                                : 'text-red-600 hover:bg-red-50'
+                            }`}
+                            title={user.email === currentUser.email ? 'Cannot delete your own account' : 'Delete User'}
+                            disabled={user.email === currentUser.email}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </ProtectedComponent>
                       </div>
                     </td>
                   </tr>

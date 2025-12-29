@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp, Calendar, X, CheckSquare, Square, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp, Calendar, X, CheckSquare, Square, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useRMACases } from '../hooks/useAPI';
 import { RMAForm } from './RMAForm';
 import { RMADetail } from './RMADetail';
+import { ProtectedComponent } from './ProtectedComponent';
 
 interface RMAListProps {
   currentUser: any;
 }
 
 export function RMAList({ currentUser }: RMAListProps) {
-  const { cases: rmaCases, loading, error, createCase, updateCase } = useRMACases();
+  const { cases: rmaCases, loading, error, total, currentPage, pageLimit, loadCases, createCase, updateCase } = useRMACases();
   const [showForm, setShowForm] = useState(false);
   const [selectedRMA, setSelectedRMA] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,6 +22,8 @@ export function RMAList({ currentUser }: RMAListProps) {
   const [yearFilter, setYearFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
   
   // Export dialog state
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -67,6 +70,16 @@ export function RMAList({ currentUser }: RMAListProps) {
   );
 
   // Debug: Log when dialog state changes
+  // Reload cases when backend filters or pagination change
+  useEffect(() => {
+    const filters: any = {};
+    if (statusFilter !== 'all') filters.status = statusFilter;
+    if (typeFilter !== 'all') filters.rmaType = typeFilter;
+    if (searchTerm) filters.search = searchTerm;
+    loadCases({ ...filters, page, limit });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, typeFilter, searchTerm, page, limit]);
+
   useEffect(() => {
     console.log('showExportDialog state changed:', showExportDialog);
   }, [showExportDialog]);
@@ -652,13 +665,15 @@ export function RMAList({ currentUser }: RMAListProps) {
           <h2 className="text-gray-900 mb-1">RMA Cases</h2>
           <p className="text-sm text-gray-600">Return Material Authorization & Part Tracking</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New RMA Case
-        </button>
+        <ProtectedComponent permission="rma:create">
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New RMA Case
+          </button>
+        </ProtectedComponent>
       </div>
 
       {/* Statistics Cards */}
@@ -889,22 +904,61 @@ export function RMAList({ currentUser }: RMAListProps) {
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-200">
-          <div>
-            <p className="text-sm text-gray-600">
-              Showing {filteredCases.length} of {yearFilteredCases.length} case{yearFilteredCases.length !== 1 ? 's' : ''}
-              {(dateFrom || dateTo) && (
-                <span className="text-blue-600 font-medium ml-1">
-                  (filtered by date range)
-                </span>
-              )}
-            </p>
-            {(dateFrom || dateTo) && (
-              <p className="text-xs text-gray-500 mt-1">
-                Date range: {dateFrom ? formatDate(dateFrom) : 'Any start'} to {dateTo ? formatDate(dateTo) : 'Any end'}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div>
+              <p className="text-sm text-gray-600">
+                Showing {filteredCases.length} of {total} total cases (Page {currentPage})
+                {(dateFrom || dateTo || yearFilter !== 'all') && (
+                  <span className="text-blue-600 font-medium ml-1">
+                    (with client-side filters applied)
+                  </span>
+                )}
               </p>
-            )}
+              {(dateFrom || dateTo) && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Date range: {dateFrom ? formatDate(dateFrom) : 'Any start'} to {dateTo ? formatDate(dateTo) : 'Any end'}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Per page:</label>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value));
+                  setPage(1); // Reset to first page when changing limit
+                }}
+                className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+            {/* Pagination Controls */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1 || loading}
+                className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm text-gray-600">
+                Page {currentPage} of {Math.ceil(total / limit) || 1}
+              </span>
+              <button
+                onClick={() => setPage(p => p + 1)}
+                disabled={currentPage >= Math.ceil(total / limit) || loading}
+                className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
             <button
               onClick={handleExportOverdueToExcel}
               className="flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-red-700 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors border border-red-200 w-full sm:w-auto"

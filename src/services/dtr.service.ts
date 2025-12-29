@@ -34,15 +34,19 @@ export const dtrService = {
     severity?: string;
     assignedTo?: string;
     search?: string;
+    page?: number;
+    limit?: number;
   }) {
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
     if (filters?.severity) params.append('severity', filters.severity);
     if (filters?.assignedTo) params.append('assignedTo', filters.assignedTo);
     if (filters?.search) params.append('search', filters.search);
+    if (filters?.page) params.append('page', filters.page.toString());
+    if (filters?.limit) params.append('limit', filters.limit.toString());
     
     const query = params.toString() ? `?${params.toString()}` : '';
-    return await api.get<{ cases: DTRCase[]; total: number }>(`/dtr${query}`);
+    return await api.get<{ cases: DTRCase[]; total: number; page: number; limit: number }>(`/dtr${query}`);
   },
 
   // Get DTR case by ID

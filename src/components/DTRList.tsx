@@ -1,21 +1,37 @@
-import React, { useState } from 'react';
-import { Plus, Search, Filter, Download, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, Filter, Download, Eye, List, UserCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDTRCases, useUsersAPI } from '../hooks/useAPI';
 import { DTRForm } from './DTRForm';
 import { DTRDetail } from './DTRDetail';
+import { ProtectedComponent } from './ProtectedComponent';
+import { usePermissions } from '../hooks/usePermissions';
 
 interface DTRListProps {
   currentUser: any;
 }
 
 export function DTRList({ currentUser }: DTRListProps) {
-  const { cases: dtrCases, loading, error, createCase, updateCase } = useDTRCases();
+  const { cases: dtrCases, loading, error, total, currentPage, pageLimit, loadCases, createCase, updateCase } = useDTRCases();
   const { users } = useUsersAPI();
+  const { isEngineer } = usePermissions();
   const [showForm, setShowForm] = useState(false);
   const [selectedDTR, setSelectedDTR] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [severityFilter, setSeverityFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'all' | 'assigned'>('all'); // For engineers: 'all' or 'assigned'
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+
+  // Reload cases when filters or pagination change
+  useEffect(() => {
+    const filters: any = {};
+    if (statusFilter !== 'all') filters.status = statusFilter;
+    if (severityFilter !== 'all') filters.severity = severityFilter;
+    if (searchTerm) filters.search = searchTerm;
+    loadCases({ ...filters, page, limit });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, severityFilter, searchTerm, page, limit]);
 
   // Helper function to get site name
   const getSiteName = (site: string | { siteName: string } | any): string => {
@@ -66,7 +82,33 @@ export function DTRList({ currentUser }: DTRListProps) {
     }
   };
 
+  // Helper to check if a DTR case is assigned to current user
+  const isAssignedToCurrentUser = (dtr: any): boolean => {
+    if (!currentUser) return false;
+    
+    // Check by user ID
+    if (dtr.assignedTo === currentUser.id) return true;
+    
+    // Check by email
+    if (dtr.assignedTo === currentUser.email) return true;
+    
+    // Check if assignee object matches
+    if (dtr.assignee) {
+      if (dtr.assignee.id === currentUser.id) return true;
+      if (dtr.assignee.email === currentUser.email) return true;
+    }
+    
+    return false;
+  };
+
   const filteredCases = dtrCases.filter(dtr => {
+    // For engineers: filter by view mode
+    if (isEngineer && viewMode === 'assigned') {
+      if (!isAssignedToCurrentUser(dtr)) {
+        return false;
+      }
+    }
+    
     const siteName = getSiteName(dtr.site);
     const audiNo = dtr.audi?.audiNo || dtr.audiNo || '';
     const matchesSearch = 
@@ -171,13 +213,46 @@ export function DTRList({ currentUser }: DTRListProps) {
           <h2 className="text-gray-900 mb-1">DTR Cases</h2>
           <p className="text-sm text-gray-600">Daily Technical Reports & Service Tickets</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New DTR Case
-        </button>
+        <div className="flex items-center gap-2">
+          {/* View Toggle for Engineers */}
+          {isEngineer && (
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('all')}
+                className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors ${
+                  viewMode === 'all'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                title="View all DTR cases"
+              >
+                <List className="w-4 h-4" />
+                <span className="hidden sm:inline">All DTRs</span>
+              </button>
+              <button
+                onClick={() => setViewMode('assigned')}
+                className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors ${
+                  viewMode === 'assigned'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                title="View only my assigned DTR cases"
+              >
+                <UserCheck className="w-4 h-4" />
+                <span className="hidden sm:inline">My Assigned</span>
+              </button>
+            </div>
+          )}
+          <ProtectedComponent permission="dtr:create">
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              New DTR Case
+            </button>
+          </ProtectedComponent>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -226,16 +301,66 @@ export function DTRList({ currentUser }: DTRListProps) {
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-200">
-          <p className="text-sm text-gray-600">
-            Showing {filteredCases.length} of {dtrCases.length} cases
-          </p>
-          <button
-            onClick={handleExport}
-            className="flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors w-full sm:w-auto"
-          >
-            <Download className="w-4 h-4" />
-            Export CSV
-          </button>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <p className="text-sm text-gray-600">
+              {isEngineer && viewMode === 'assigned' ? (
+                <>
+                  Showing {filteredCases.length} of {dtrCases.filter(dtr => isAssignedToCurrentUser(dtr)).length} assigned cases
+                  <span className="ml-2 text-blue-600 font-medium">(My Assigned Only)</span>
+                </>
+              ) : (
+                <>Showing {filteredCases.length} of {total} total cases (Page {currentPage})</>
+              )}
+            </p>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Per page:</label>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value));
+                  setPage(1); // Reset to first page when changing limit
+                }}
+                className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Pagination Controls */}
+            {!isEngineer || viewMode === 'all' ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1 || loading}
+                  className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Previous page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-sm text-gray-600">
+                  Page {currentPage} of {Math.ceil(total / limit) || 1}
+                </span>
+                <button
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={currentPage >= Math.ceil(total / limit) || loading}
+                  className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Next page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            ) : null}
+            <button
+              onClick={handleExport}
+              className="flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors w-full sm:w-auto"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </button>
+          </div>
         </div>
       </div>
 

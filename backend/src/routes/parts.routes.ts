@@ -9,33 +9,27 @@ import {
   getPartCategories,
 } from '../controllers/parts.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
-import { requireRole } from '../middleware/role.middleware';
+import { requirePermission } from '../middleware/role.middleware';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticateToken);
 
-// Get all parts
-router.get('/', getAllParts);
+// View routes - staff, engineer, manager, admin
+router.get('/', requirePermission('parts:view'), getAllParts);
+router.get('/categories', requirePermission('parts:view'), getPartCategories);
+router.get('/projector/:modelNo', requirePermission('parts:view'), getPartsByProjectorModel);
+router.get('/:id', requirePermission('parts:view'), getPartById);
 
-// Get part categories
-router.get('/categories', getPartCategories);
+// Create part - manager, admin
+router.post('/', requirePermission('parts:create'), createPart);
 
-// Get parts by projector model number
-router.get('/projector/:modelNo', getPartsByProjectorModel);
+// Update part - manager, admin
+router.put('/:id', requirePermission('parts:update'), updatePart);
 
-// Get single part
-router.get('/:id', getPartById);
-
-// Create part (admin/manager only)
-router.post('/', requireRole('admin', 'manager'), createPart);
-
-// Update part (admin/manager only)
-router.put('/:id', requireRole('admin', 'manager'), updatePart);
-
-// Delete part (admin only)
-router.delete('/:id', requireRole('admin'), deletePart);
+// Delete part - admin only
+router.delete('/:id', requirePermission('parts:delete'), deletePart);
 
 export default router;
 

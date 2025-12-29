@@ -344,3 +344,191 @@ export async function getSiteStats(req: Request, res: Response) {
   }
 }
 
+// Get RMA Part Analytics
+export async function getRmaPartAnalytics(req: AuthRequest, res: Response) {
+  try {
+    const { fromDate, toDate, partName, partNumber } = req.query;
+
+    // Build where clause for date range
+    const dateWhere: any = {};
+    if (fromDate) {
+      dateWhere.rmaRaisedDate = { ...dateWhere.rmaRaisedDate, gte: new Date(fromDate as string) };
+    }
+    if (toDate) {
+      dateWhere.rmaRaisedDate = { ...dateWhere.rmaRaisedDate, lte: new Date(toDate as string) };
+    }
+
+    // Build where clause for part search (search in all part fields)
+    const partWhere: any[] = [];
+    if (partName || partNumber) {
+      const searchTerm = (partName || partNumber) as string;
+      partWhere.push(
+        { productPartNumber: { contains: searchTerm, mode: 'insensitive' } },
+        { defectivePartNumber: { contains: searchTerm, mode: 'insensitive' } },
+        { defectivePartName: { contains: searchTerm, mode: 'insensitive' } },
+        { replacedPartNumber: { contains: searchTerm, mode: 'insensitive' } },
+        { productName: { contains: searchTerm, mode: 'insensitive' } }
+      );
+    }
+
+    // Combine where clauses
+    const where: any = { ...dateWhere };
+    if (partWhere.length > 0) {
+      where.OR = partWhere;
+    }
+
+    // Get all matching RMA cases (limit to prevent connection exhaustion)
+    // For analytics, we don't need all data - we can aggregate in the database
+    const rmaCases = await prisma.rmaCase.findMany({
+      where,
+      select: {
+        id: true,
+        rmaNumber: true,
+        callLogNumber: true,
+        rmaRaisedDate: true,
+        productPartNumber: true,
+        defectivePartNumber: true,
+        defectivePartName: true,
+        replacedPartNumber: true,
+        status: true,
+        rmaType: true,
+        defectDetails: true,
+        symptoms: true,
+        site: {
+          select: {
+            siteName: true,
+          },
+        },
+      },
+      orderBy: { rmaRaisedDate: 'desc' },
+      take: 10000, // Limit to prevent excessive data fetching
+    });
+
+    // 1. Total count
+    const totalCount = rmaCases.length;
+
+    // 2. Status breakdown
+    const statusBreakdown = rmaCases.reduce((acc: any, rma) => {
+      acc[rma.status] = (acc[rma.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    // 3. Defect patterns/trends - group by defect details or symptoms
+    const defectPatterns: Record<string, number> = {};
+    rmaCases.forEach((rma) => {
+      // Use defectDetails first, then symptoms, then defectivePartName as fallback
+      const defectKey = rma.defectDetails || rma.symptoms || rma.defectivePartName || 'Unknown';
+      // Normalize: take first 50 chars to group similar defects
+      const normalizedKey = defectKey.substring(0, 50).trim();
+      defectPatterns[normalizedKey] = (defectPatterns[normalizedKey] || 0) + 1;
+    });
+
+    // Get top defect patterns
+    const topDefectPatterns = Object.entries(defectPatterns)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([pattern, count]) => ({ pattern, count }));
+
+    // 4. Frequency/trend over time
+    // Determine grouping based on date range
+    let dateGrouping: 'day' | 'week' | 'month' = 'month';
+    if (fromDate && toDate) {
+      const from = new Date(fromDate as string);
+      const to = new Date(toDate as string);
+      const daysDiff = Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff <= 30) {
+        dateGrouping = 'day';
+      } else if (daysDiff <= 90) {
+        dateGrouping = 'week';
+      } else {
+        dateGrouping = 'month';
+      }
+    }
+
+    const trendData: Record<string, number> = {};
+    rmaCases.forEach((rma) => {
+      const date = new Date(rma.rmaRaisedDate);
+      let key: string;
+      
+      if (dateGrouping === 'day') {
+        key = date.toISOString().split('T')[0]; // YYYY-MM-DD
+      } else if (dateGrouping === 'week') {
+        const weekStart = new Date(date);
+        weekStart.setDate(date.getDate() - date.getDay()); // Start of week (Sunday)
+        key = `${weekStart.getFullYear()}-W${String(Math.ceil((weekStart.getDate() + 6) / 7)).padStart(2, '0')}`;
+      } else {
+        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
+      }
+      
+      trendData[key] = (trendData[key] || 0) + 1;
+    });
+
+    // Convert to array and sort
+    const trends = Object.entries(trendData)
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // 5. Part-specific breakdown
+    const partBreakdown = {
+      productParts: rmaCases.filter(rma => rma.productPartNumber).length,
+      defectiveParts: rmaCases.filter(rma => rma.defectivePartNumber).length,
+      replacedParts: rmaCases.filter(rma => rma.replacedPartNumber).length,
+    };
+
+    // 6. Site distribution
+    const siteDistribution = rmaCases.reduce((acc: any, rma) => {
+      const siteName = rma.site?.siteName || 'Unknown';
+      acc[siteName] = (acc[siteName] || 0) + 1;
+      return acc;
+    }, {});
+
+    const topSites = Object.entries(siteDistribution)
+      .sort(([, a]: any, [, b]: any) => b - a)
+      .slice(0, 10)
+      .map(([site, count]) => ({ site, count }));
+
+    // 7. RMA Type breakdown
+    const typeBreakdown = rmaCases.reduce((acc: any, rma) => {
+      acc[rma.rmaType] = (acc[rma.rmaType] || 0) + 1;
+      return acc;
+    }, {});
+
+    return sendSuccess(res, {
+      summary: {
+        totalCount,
+        dateRange: {
+          from: fromDate || null,
+          to: toDate || null,
+        },
+        partFilter: {
+          name: partName || null,
+          number: partNumber || null,
+        },
+      },
+      statusBreakdown,
+      defectPatterns: topDefectPatterns,
+      trends,
+      partBreakdown,
+      siteDistribution: topSites,
+      typeBreakdown,
+      cases: rmaCases.map(rma => ({
+        id: rma.id,
+        rmaNumber: rma.rmaNumber,
+        callLogNumber: rma.callLogNumber,
+        rmaRaisedDate: rma.rmaRaisedDate,
+        productPartNumber: rma.productPartNumber,
+        defectivePartNumber: rma.defectivePartNumber,
+        defectivePartName: rma.defectivePartName,
+        replacedPartNumber: rma.replacedPartNumber,
+        status: rma.status,
+        siteName: rma.site?.siteName || 'Unknown',
+        defectDetails: rma.defectDetails,
+      })),
+    });
+  } catch (error: any) {
+    console.error('Get RMA part analytics error:', error);
+    return sendError(res, 'Failed to fetch RMA part analytics', 500, error.message);
+  }
+}
+

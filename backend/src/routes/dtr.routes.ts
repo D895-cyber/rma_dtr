@@ -11,24 +11,39 @@ import {
   getDtrAuditLogs,
 } from '../controllers/dtr.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
-import { requireRole } from '../middleware/role.middleware';
+import { requirePermission } from '../middleware/role.middleware';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticateToken);
 
-router.get('/', getAllDtrCases);
-router.get('/:id', getDtrCaseById);
-router.post('/', createDtrCase);
-router.put('/:id', updateDtrCase);
-router.post('/:id/assign', assignDtrCase);
-router.post('/:id/status', updateDtrStatus);
-router.post('/:id/close', closeDtrCase);
-router.delete('/:id', requireRole('admin'), deleteDtrCase);
-router.get('/:id/audit-log', getDtrAuditLogs);
+// View routes - staff, engineer, manager, admin
+router.get('/', requirePermission('dtr:view'), getAllDtrCases);
+router.get('/:id', requirePermission('dtr:view'), getDtrCaseById);
+router.get('/:id/audit-log', requirePermission('dtr:view'), getDtrAuditLogs);
+
+// Create - engineer, manager, admin
+router.post('/', requirePermission('dtr:create'), createDtrCase);
+
+// Update - engineer (own cases), manager, admin
+router.put('/:id', requirePermission('dtr:update'), updateDtrCase);
+
+// Assign - manager, admin
+router.post('/:id/assign', requirePermission('dtr:assign'), assignDtrCase);
+
+// Status update - manager, admin
+router.post('/:id/status', requirePermission('dtr:update'), updateDtrStatus);
+
+// Close - manager, admin
+router.post('/:id/close', requirePermission('dtr:close'), closeDtrCase);
+
+// Delete - admin only
+router.delete('/:id', requirePermission('dtr:delete'), deleteDtrCase);
 
 export default router;
+
+
 
 
 

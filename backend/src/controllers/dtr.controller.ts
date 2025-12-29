@@ -7,7 +7,7 @@ import { sendAssignmentEmail } from '../utils/email.util';
 // Get all DTR cases with filters
 export async function getAllDtrCases(req: AuthRequest, res: Response) {
   try {
-    const { status, severity, assignedTo, search, page = '1', limit = '10000' } = req.query;
+    const { status, severity, assignedTo, search, page = '1', limit = '50' } = req.query;
 
     const where: any = {};
 
@@ -24,8 +24,10 @@ export async function getAllDtrCases(req: AuthRequest, res: Response) {
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
-    const take = Number(limit);
+    // Enforce maximum limit to prevent connection pool exhaustion
+    const maxLimit = 100;
+    const take = Math.min(Number(limit), maxLimit);
+    const skip = (Number(page) - 1) * take;
 
     const [cases, total] = await Promise.all([
       prisma.dtrCase.findMany({

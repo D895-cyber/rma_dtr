@@ -7,7 +7,7 @@ import { sendAssignmentEmail, sendRmaClientEmail } from '../utils/email.util';
 // Get all RMA cases with filters
 export async function getAllRmaCases(req: AuthRequest, res: Response) {
   try {
-    const { status, type, assignedTo, search, page = '1', limit = '10000' } = req.query;
+    const { status, type, assignedTo, search, page = '1', limit = '50' } = req.query;
 
     const where: any = {};
 
@@ -24,8 +24,10 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
-    const take = Number(limit);
+    // Enforce maximum limit to prevent connection pool exhaustion
+    const maxLimit = 100;
+    const take = Math.min(Number(limit), maxLimit);
+    const skip = (Number(page) - 1) * take;
 
     const [cases, total] = await Promise.all([
       prisma.rmaCase.findMany({

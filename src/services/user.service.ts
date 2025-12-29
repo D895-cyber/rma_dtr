@@ -48,9 +48,18 @@ export const userService = {
   async deleteUser(id: string) {
     return await api.delete(`/users/${id}`);
   },
+
+  // Reset user password
+  async resetUserPassword(id: string, newPassword: string) {
+    return await api.post<{ message: string }>(`/users/${id}/reset-password`, { newPassword });
+  },
 };
 
 export default userService;
+
+
+
+
 
 
 

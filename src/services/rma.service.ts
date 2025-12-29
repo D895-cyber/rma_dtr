@@ -48,15 +48,19 @@ export const rmaService = {
     rmaType?: string;
     assignedTo?: string;
     search?: string;
+    page?: number;
+    limit?: number;
   }) {
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
-    if (filters?.rmaType) params.append('rmaType', filters.rmaType);
+    if (filters?.rmaType) params.append('type', filters.rmaType);
     if (filters?.assignedTo) params.append('assignedTo', filters.assignedTo);
     if (filters?.search) params.append('search', filters.search);
+    if (filters?.page) params.append('page', filters.page.toString());
+    if (filters?.limit) params.append('limit', filters.limit.toString());
     
     const query = params.toString() ? `?${params.toString()}` : '';
-    return await api.get<{ cases: RMACase[]; total: number }>(`/rma${query}`);
+    return await api.get<{ cases: RMACase[]; total: number; page: number; limit: number }>(`/rma${query}`);
   },
 
   // Get RMA case by ID

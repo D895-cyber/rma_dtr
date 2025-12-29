@@ -17,14 +17,22 @@ export function useDTRCases() {
   const [cases, setCases] = useState<DTRCase[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageLimit, setPageLimit] = useState(50);
 
   const loadCases = useCallback(async (filters?: any) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await dtrService.getAllDTRCases(filters);
+      const page = filters?.page || 1;
+      const limit = filters?.limit || 50;
+      const response = await dtrService.getAllDTRCases({ ...filters, page, limit });
       if (response.success && response.data) {
         setCases(response.data.cases || []);
+        setTotal(response.data.total || 0);
+        setCurrentPage(response.data.page || 1);
+        setPageLimit(response.data.limit || 50);
       } else {
         setError(response.message || 'Failed to load DTR cases');
       }
@@ -83,6 +91,9 @@ export function useDTRCases() {
     cases,
     loading,
     error,
+    total,
+    currentPage,
+    pageLimit,
     loadCases,
     createCase,
     updateCase,
@@ -97,14 +108,22 @@ export function useRMACases() {
   const [cases, setCases] = useState<RMACase[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageLimit, setPageLimit] = useState(50);
 
   const loadCases = useCallback(async (filters?: any) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await rmaService.getAllRMACases(filters);
+      const page = filters?.page || 1;
+      const limit = filters?.limit || 50;
+      const response = await rmaService.getAllRMACases({ ...filters, page, limit });
       if (response.success && response.data) {
         setCases(response.data.cases || []);
+        setTotal(response.data.total || 0);
+        setCurrentPage(response.data.page || 1);
+        setPageLimit(response.data.limit || 50);
       } else {
         setError(response.message || 'Failed to load RMA cases');
       }
@@ -147,6 +166,9 @@ export function useRMACases() {
     cases,
     loading,
     error,
+    total,
+    currentPage,
+    pageLimit,
     loadCases,
     createCase,
     updateCase,
@@ -294,6 +316,11 @@ export function useUsersAPI() {
     return response;
   };
 
+  const resetPassword = async (id: string, newPassword: string) => {
+    const response = await userService.resetUserPassword(id, newPassword);
+    return response;
+  };
+
   return {
     users,
     loading,
@@ -302,6 +329,7 @@ export function useUsersAPI() {
     createUser,
     updateUser,
     deleteUser,
+    resetPassword,
   };
 }
 

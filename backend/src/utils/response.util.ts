@@ -13,8 +13,14 @@ export function sendError(res: Response, message: string, statusCode: number = 4
     success: false,
     message,
     error: process.env.NODE_ENV === 'development' ? error : undefined,
+    requestId: res.getHeader('X-Request-ID') || undefined,
+    timestamp: new Date().toISOString(),
   });
 }
+
+
+
+
 
 
 

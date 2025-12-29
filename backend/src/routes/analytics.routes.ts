@@ -5,22 +5,27 @@ import {
   getSeverityBreakdown,
   getEngineerPerformance,
   getSiteStats,
+  getRmaPartAnalytics,
 } from '../controllers/analytics.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
-import { requireRole } from '../middleware/role.middleware';
+import { requirePermission } from '../middleware/role.middleware';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticateToken);
 
-router.get('/dashboard', getDashboardStats);
-router.get('/trends', getTrends);
-router.get('/severity-breakdown', getSeverityBreakdown);
-router.get('/engineer-performance', requireRole('admin', 'manager'), getEngineerPerformance);
-router.get('/site-stats', getSiteStats);
+// All analytics routes require view permission
+router.get('/dashboard', requirePermission('analytics:view'), getDashboardStats);
+router.get('/trends', requirePermission('analytics:view'), getTrends);
+router.get('/severity-breakdown', requirePermission('analytics:view'), getSeverityBreakdown);
+router.get('/engineer-performance', requirePermission('analytics:view'), getEngineerPerformance);
+router.get('/site-stats', requirePermission('analytics:view'), getSiteStats);
+router.get('/rma-parts', requirePermission('analytics:view'), getRmaPartAnalytics);
 
 export default router;
+
+
 
 
 

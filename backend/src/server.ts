@@ -18,6 +18,9 @@ import analyticsRoutes from './routes/analytics.routes';
 
 // Import middleware
 import { errorHandler } from './middleware/error.middleware';
+import { requestIdMiddleware } from './middleware/requestId.middleware';
+import { authLimiter } from './middleware/rateLimit.middleware';
+import { healthCheck } from './controllers/health.controller';
 
 // Load environment variables
 dotenv.config();
@@ -28,6 +31,9 @@ const PORT = process.env.PORT || 5000;
 // ============================================
 // MIDDLEWARE
 // ============================================
+
+// Request ID tracking (must be early in middleware chain)
+app.use(requestIdMiddleware);
 
 // Security
 app.use(helmet());
@@ -42,7 +48,12 @@ app.use(cors({
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
+  message: {
+    success: false,
+    message: 'Too many requests from this IP, please try again later.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 app.use('/api/', limiter);
 
@@ -64,10 +75,8 @@ if (process.env.NODE_ENV === 'development') {
 // ROUTES
 // ============================================
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', message: 'CRM API is running', timestamp: new Date().toISOString() });
-});
+// Health check (enhanced with database check)
+app.get('/health', healthCheck);
 
 // API routes
 app.use('/api/auth', authRoutes);

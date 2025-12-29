@@ -6,23 +6,36 @@ import {
   updateUser,
   deleteUser,
   getEngineers,
+  resetUserPassword,
 } from '../controllers/user.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
-import { requireRole } from '../middleware/role.middleware';
+import { requirePermission } from '../middleware/role.middleware';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticateToken);
 
-router.get('/', getAllUsers);
-router.get('/engineers', getEngineers);
-router.get('/:id', getUserById);
-router.post('/', requireRole('admin'), createUser);
-router.put('/:id', requireRole('admin', 'manager'), updateUser);
-router.delete('/:id', requireRole('admin'), deleteUser);
+// View users - manager, admin
+router.get('/', requirePermission('users:view'), getAllUsers);
+router.get('/engineers', requirePermission('users:view'), getEngineers);
+router.get('/:id', requirePermission('users:view'), getUserById);
+
+// Create user - admin only
+router.post('/', requirePermission('users:create'), createUser);
+
+// Update user - admin only (managers can view but not update)
+router.put('/:id', requirePermission('users:update'), updateUser);
+
+// Delete user - admin only
+router.delete('/:id', requirePermission('users:delete'), deleteUser);
+
+// Reset password - admin only
+router.post('/:id/reset-password', requirePermission('users:resetPassword'), resetUserPassword);
 
 export default router;
+
+
 
 
 

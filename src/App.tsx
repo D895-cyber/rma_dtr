@@ -3,6 +3,7 @@ import { Dashboard } from './components/Dashboard';
 import { DTRList } from './components/DTRList';
 import { RMAList } from './components/RMAList';
 import { Analytics } from './components/Analytics';
+import { RMAAnalytics } from './components/RMAAnalytics';
 import { MasterData } from './components/MasterData';
 import { UserManagement } from './components/UserManagement';
 import { Notifications } from './components/Notifications';
@@ -10,11 +11,14 @@ import { PartsManagement } from './components/PartsManagement';
 import { ModelsManagement } from './components/ModelsManagement';
 import { AuthScreen } from './components/AuthScreen';
 import { useAuth } from './contexts/AuthContext';
-import { LayoutDashboard, FileText, Package, BarChart3, Building2, Users, Wrench, Box, LogOut } from 'lucide-react';
+import { usePermissions } from './hooks/usePermissions';
+import { LayoutDashboard, FileText, Package, BarChart3, Building2, Users, Wrench, Box, LogOut, TrendingUp } from 'lucide-react';
 
 export default function App() {
+  // ALL HOOKS MUST BE CALLED AT THE TOP - BEFORE ANY CONDITIONAL RETURNS
   const { user, isAuthenticated, isLoading, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'dtr' | 'rma' | 'analytics' | 'masterdata' | 'models' | 'parts' | 'users'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'dtr' | 'rma' | 'analytics' | 'rma-analytics' | 'masterdata' | 'models' | 'parts' | 'users'>('dashboard');
+  const { can } = usePermissions(); // Moved here - must be called unconditionally
 
   const handleLogout = () => {
     logout();
@@ -41,18 +45,23 @@ export default function App() {
   // Use real user from backend
   const currentUser = user;
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'dtr', label: 'DTR Cases', icon: FileText },
-    { id: 'rma', label: 'RMA Cases', icon: Package },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'masterdata', label: 'Master Data', icon: Building2 },
-    { id: 'models', label: 'Models', icon: Box },
-    { id: 'parts', label: 'Parts', icon: Wrench },
+  // Role-based navigation items
+  const allNavItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: 'analytics:view' as const },
+    { id: 'dtr', label: 'DTR Cases', icon: FileText, permission: 'dtr:view' as const },
+    { id: 'rma', label: 'RMA Cases', icon: Package, permission: 'rma:view' as const },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3, permission: 'analytics:view' as const },
+    { id: 'rma-analytics', label: 'RMA Analytics', icon: TrendingUp, permission: 'analytics:view' as const },
+    { id: 'masterdata', label: 'Master Data', icon: Building2, permission: 'master:view' as const },
+    { id: 'models', label: 'Models', icon: Box, permission: 'models:view' as const },
+    { id: 'parts', label: 'Parts', icon: Wrench, permission: 'parts:view' as const },
   ];
 
+  // Filter nav items based on user permissions
+  const navItems = allNavItems.filter(item => can(item.permission));
+
   const adminItems = [
-    { id: 'users', label: 'Users', icon: Users },
+    { id: 'users', label: 'Users', icon: Users, permission: 'users:view' as const },
   ];
 
   return (
@@ -69,9 +78,19 @@ export default function App() {
             </div>
             <div className="flex items-center gap-4">
               <Notifications currentUser={currentUser} />
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-900">{currentUser.name}</p>
-                <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-900">{currentUser.name}</p>
+                  <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
               </div>
             </div>
           </div>
@@ -102,7 +121,7 @@ export default function App() {
                 </button>
               );
             })}
-            {currentUser?.role === 'admin' && adminItems.map((item) => {
+            {adminItems.filter(item => can(item.permission)).map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
               return (
@@ -132,6 +151,7 @@ export default function App() {
         {activeTab === 'dtr' && <DTRList currentUser={currentUser} />}
         {activeTab === 'rma' && <RMAList currentUser={currentUser} />}
         {activeTab === 'analytics' && <Analytics currentUser={currentUser} />}
+        {activeTab === 'rma-analytics' && <RMAAnalytics currentUser={currentUser} />}
         {activeTab === 'masterdata' && <MasterData currentUser={currentUser} />}
         {activeTab === 'models' && <ModelsManagement />}
         {activeTab === 'parts' && <PartsManagement />}

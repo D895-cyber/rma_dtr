@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Building2, ChevronDown, ChevronRight, Save, X, ArrowRightLeft } from 'lucide-react';
+import { Plus, Edit2, Trash2, Building2, ChevronDown, ChevronRight, Save, X, ArrowRightLeft, Search, XCircle } from 'lucide-react';
 import { useMasterDataAPI, Site, Audi, Projector } from '../hooks/useAPI';
 
 interface MasterDataProps {
@@ -32,6 +32,11 @@ export function MasterData({ currentUser }: MasterDataProps) {
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [editingAudi, setEditingAudi] = useState<{ siteId: string; audi: Audi } | null>(null);
   const [selectedSiteForAudi, setSelectedSiteForAudi] = useState<string>('');
+  
+  // Advanced search state
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [searchSiteName, setSearchSiteName] = useState('');
+  const [searchSerialNumber, setSearchSerialNumber] = useState('');
 
   const [siteFormData, setSiteFormData] = useState({ siteName: '' });
   const [audiFormData, setAudiFormData] = useState({
@@ -46,6 +51,45 @@ export function MasterData({ currentUser }: MasterDataProps) {
   const [transferTargetSiteId, setTransferTargetSiteId] = useState<string>('');
   const [transferTargetAudiId, setTransferTargetAudiId] = useState<string>('');
   const [transferReason, setTransferReason] = useState<string>('');
+
+  // Filter sites based on search criteria
+  const filteredSites = sites.filter((site) => {
+    const siteNameMatch = !searchSiteName || 
+      site.siteName.toLowerCase().includes(searchSiteName.toLowerCase());
+    
+    const serialNumberMatch = !searchSerialNumber || 
+      site.audis.some((audi) => 
+        audi.projector?.serialNumber?.toLowerCase().includes(searchSerialNumber.toLowerCase())
+      );
+    
+    return siteNameMatch && serialNumberMatch;
+  });
+
+  // Auto-expand sites that match search criteria
+  useEffect(() => {
+    if (searchSiteName || searchSerialNumber) {
+      const matching = sites.filter((site) => {
+        const siteNameMatch = !searchSiteName || 
+          site.siteName.toLowerCase().includes(searchSiteName.toLowerCase());
+        const serialNumberMatch = !searchSerialNumber || 
+          site.audis.some((audi) => 
+            audi.projector?.serialNumber?.toLowerCase().includes(searchSerialNumber.toLowerCase())
+          );
+        return siteNameMatch && serialNumberMatch;
+      });
+      
+      if (matching.length > 0 && !matching.some(s => s.id === expandedSiteId)) {
+        setExpandedSiteId(matching[0].id);
+      }
+    }
+  }, [searchSiteName, searchSerialNumber, sites, expandedSiteId]);
+
+  // Clear search
+  const clearSearch = () => {
+    setSearchSiteName('');
+    setSearchSerialNumber('');
+    setShowAdvancedSearch(false);
+  };
 
   const handleAddSite = async () => {
     if (siteFormData.siteName.trim()) {
@@ -347,14 +391,75 @@ export function MasterData({ currentUser }: MasterDataProps) {
           <h2 className="text-gray-900 mb-1">Master Data Management</h2>
           <p className="text-sm text-gray-600">Manage Sites, Audis, and Projector Information</p>
         </div>
-        <button
-          onClick={openAddSiteForm}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Site
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            <Search className="w-4 h-4" />
+            {showAdvancedSearch ? 'Hide' : 'Advanced'} Search
+          </button>
+          <button
+            onClick={openAddSiteForm}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Site
+          </button>
+        </div>
       </div>
+
+      {/* Advanced Search Panel */}
+      {showAdvancedSearch && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-900">Advanced Search</h3>
+            <button
+              onClick={clearSearch}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+              title="Clear search"
+            >
+              <XCircle className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-700 mb-2">Search by Site Name</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchSiteName}
+                  onChange={(e) => setSearchSiteName(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter site name..."
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-2">Search by Serial Number</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchSerialNumber}
+                  onChange={(e) => setSearchSerialNumber(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter projector serial number..."
+                />
+              </div>
+            </div>
+          </div>
+          {(searchSiteName || searchSerialNumber) && (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <p className="text-sm text-gray-600">
+                Showing <span className="font-semibold text-gray-900">{filteredSites.length}</span> of{' '}
+                <span className="font-semibold text-gray-900">{sites.length}</span> sites
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Site Form Dialog */}
       {showSiteForm && (
@@ -462,11 +567,17 @@ export function MasterData({ currentUser }: MasterDataProps) {
       <div className="bg-white rounded-lg border border-gray-200">
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-gray-900">Sites & Audis</h3>
-          <p className="text-sm text-gray-600 mt-1">Total: {sites.length} sites</p>
+          <p className="text-sm text-gray-600 mt-1">
+            {searchSiteName || searchSerialNumber ? (
+              <>Showing <span className="font-semibold">{filteredSites.length}</span> of <span className="font-semibold">{sites.length}</span> sites</>
+            ) : (
+              <>Total: {sites.length} sites</>
+            )}
+          </p>
         </div>
         
         <div className="divide-y divide-gray-200">
-          {sites.length === 0 ? (
+          {filteredSites.length === 0 ? (
             <div className="px-6 py-12 text-center">
               <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-3" />
               <p className="text-gray-600 mb-4">No sites added yet</p>
@@ -479,7 +590,14 @@ export function MasterData({ currentUser }: MasterDataProps) {
               </button>
             </div>
           ) : (
-            sites.map((site) => (
+            filteredSites.map((site) => {
+              // Check if this site has matching serial number
+              const hasMatchingSerial = searchSerialNumber && 
+                site.audis.some((audi) => 
+                  audi.projector?.serialNumber?.toLowerCase().includes(searchSerialNumber.toLowerCase())
+                );
+              
+              return (
               <div key={site.id} className="px-6 py-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3 flex-1">
@@ -538,8 +656,16 @@ export function MasterData({ currentUser }: MasterDataProps) {
                         </button>
                       </div>
                     ) : (
-                      site.audis.map((audi) => (
-                        <div key={audi.id} className="bg-gray-50 rounded-lg p-4">
+                      site.audis.map((audi) => {
+                        // Check if this audi matches serial number search
+                        const matchesSerial = searchSerialNumber && 
+                          audi.projector?.serialNumber?.toLowerCase().includes(searchSerialNumber.toLowerCase());
+                        
+                        return (
+                        <div 
+                          key={audi.id} 
+                          className={`bg-gray-50 rounded-lg p-4 ${matchesSerial ? 'ring-2 ring-blue-500 bg-blue-50' : ''}`}
+                        >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-2">
@@ -587,12 +713,14 @@ export function MasterData({ currentUser }: MasterDataProps) {
                             </div>
                           </div>
                         </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 )}
               </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

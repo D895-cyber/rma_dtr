@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Download, Eye, List, UserCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Filter, Download, Eye, List, UserCheck, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useDTRCases, useUsersAPI } from '../hooks/useAPI';
 import { DTRForm } from './DTRForm';
 import { DTRDetail } from './DTRDetail';
@@ -22,16 +22,30 @@ export function DTRList({ currentUser }: DTRListProps) {
   const [viewMode, setViewMode] = useState<'all' | 'assigned'>('all'); // For engineers: 'all' or 'assigned'
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  // Debounce search term - wait 500ms after user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setPage(1); // Reset to first page when search changes
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // Reload cases when filters or pagination change
   useEffect(() => {
     const filters: any = {};
     if (statusFilter !== 'all') filters.status = statusFilter;
     if (severityFilter !== 'all') filters.severity = severityFilter;
-    if (searchTerm) filters.search = searchTerm;
-    loadCases({ ...filters, page, limit });
+    if (debouncedSearchTerm) filters.search = debouncedSearchTerm;
+    loadCases({ ...filters, page, limit }).then(() => {
+      setIsInitialLoad(false);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, severityFilter, searchTerm, page, limit]);
+  }, [statusFilter, severityFilter, debouncedSearchTerm, page, limit]);
 
   // Helper function to get site name
   const getSiteName = (site: string | { siteName: string } | any): string => {
@@ -150,8 +164,8 @@ export function DTRList({ currentUser }: DTRListProps) {
     a.click();
   };
 
-  // Loading state
-  if (loading) {
+  // Only show full page loader on initial load
+  if (loading && isInitialLoad && dtrCases.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -266,8 +280,11 @@ export function DTRList({ currentUser }: DTRListProps) {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search by case #, site, model, or serial..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              {loading && !isInitialLoad && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
+              )}
             </div>
           </div>
           

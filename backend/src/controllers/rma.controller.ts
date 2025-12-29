@@ -18,6 +18,8 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
     if (search) {
       where.OR = [
         { rmaNumber: { contains: search as string, mode: 'insensitive' } },
+        { callLogNumber: { contains: search as string, mode: 'insensitive' } },
+        { rmaOrderNumber: { contains: search as string, mode: 'insensitive' } },
         { productName: { contains: search as string, mode: 'insensitive' } },
         { serialNumber: { contains: search as string, mode: 'insensitive' } },
         { symptoms: { contains: search as string, mode: 'insensitive' } },

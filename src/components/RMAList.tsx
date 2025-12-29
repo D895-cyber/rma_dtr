@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp, Calendar, X, CheckSquare, Square, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp, Calendar, X, CheckSquare, Square, FileSpreadsheet, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useRMACases } from '../hooks/useAPI';
 import { RMAForm } from './RMAForm';
@@ -24,11 +24,23 @@ export function RMAList({ currentUser }: RMAListProps) {
   const [dateTo, setDateTo] = useState<string>('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   
   // Export dialog state
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportDateFrom, setExportDateFrom] = useState<string>('');
   const [exportDateTo, setExportDateTo] = useState<string>('');
+  
+  // Debounce search term - wait 500ms after user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setPage(1); // Reset to first page when search changes
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
   
   // Available fields for export with their keys and labels
   const exportFields = [
@@ -70,15 +82,21 @@ export function RMAList({ currentUser }: RMAListProps) {
   );
 
   // Debug: Log when dialog state changes
+  useEffect(() => {
+    console.log('showExportDialog state changed:', showExportDialog);
+  }, [showExportDialog]);
+
   // Reload cases when backend filters or pagination change
   useEffect(() => {
     const filters: any = {};
     if (statusFilter !== 'all') filters.status = statusFilter;
     if (typeFilter !== 'all') filters.rmaType = typeFilter;
-    if (searchTerm) filters.search = searchTerm;
-    loadCases({ ...filters, page, limit });
+    if (debouncedSearchTerm) filters.search = debouncedSearchTerm;
+    loadCases({ ...filters, page, limit }).then(() => {
+      setIsInitialLoad(false);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, typeFilter, searchTerm, page, limit]);
+  }, [statusFilter, typeFilter, debouncedSearchTerm, page, limit]);
 
   useEffect(() => {
     console.log('showExportDialog state changed:', showExportDialog);
@@ -246,6 +264,7 @@ export function RMAList({ currentUser }: RMAListProps) {
     const matchesSearch =
       (rma.rmaNumber?.toLowerCase() || '').includes(search) ||
       (rma.callLogNumber?.toLowerCase() || '').includes(search) ||
+      (rma.rmaOrderNumber?.toLowerCase() || '').includes(search) ||
       (siteName?.toLowerCase() || '').includes(search) ||
       (rma.productName?.toLowerCase() || '').includes(search) ||
       (rma.serialNumber?.toLowerCase() || '').includes(search) ||
@@ -602,8 +621,8 @@ export function RMAList({ currentUser }: RMAListProps) {
     }
   };
 
-  // Loading state
-  if (loading) {
+  // Only show full page loader on initial load
+  if (loading && isInitialLoad && rmaCases.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -833,8 +852,11 @@ export function RMAList({ currentUser }: RMAListProps) {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search by RMA #, call log, site, product, serial, or part..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full pl-10 ${loading && !isInitialLoad ? 'pr-10' : 'pr-4'} py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
               />
+              {loading && !isInitialLoad && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
+              )}
             </div>
           </div>
 

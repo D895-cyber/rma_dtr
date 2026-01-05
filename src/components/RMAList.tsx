@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp, Calendar, X, CheckSquare, Square, FileSpreadsheet, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp, Calendar, X, CheckSquare, Square, FileSpreadsheet, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useRMACases } from '../hooks/useAPI';
+import { rmaService } from '../services/rma.service';
 import { RMAForm } from './RMAForm';
 import { RMADetail } from './RMADetail';
 import { ProtectedComponent } from './ProtectedComponent';
@@ -12,7 +13,7 @@ interface RMAListProps {
 }
 
 export function RMAList({ currentUser }: RMAListProps) {
-  const { cases: rmaCases, loading, error, total, currentPage, pageLimit, loadCases, createCase, updateCase } = useRMACases();
+  const { createCase, updateCase } = useRMACases();
   const [showForm, setShowForm] = useState(false);
   const [selectedRMA, setSelectedRMA] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -22,10 +23,10 @@ export function RMAList({ currentUser }: RMAListProps) {
   const [yearFilter, setYearFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [allRMACases, setAllRMACases] = useState<any[]>([]);
+  const [loadingAllCases, setLoadingAllCases] = useState(true);
   
   // Export dialog state
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -36,7 +37,6 @@ export function RMAList({ currentUser }: RMAListProps) {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
-      setPage(1); // Reset to first page when search changes
     }, 500);
 
     return () => clearTimeout(timer);
@@ -81,22 +81,51 @@ export function RMAList({ currentUser }: RMAListProps) {
     new Set(exportFields.map(f => f.key))
   );
 
+  // Function to load all RMA cases
+  const fetchAllCases = async () => {
+    setLoadingAllCases(true);
+    try {
+      const allCases: any[] = [];
+      let page = 1;
+      let totalCases = 0;
+      
+      // First, get the total count
+      const firstResponse = await rmaService.getAllRMACases({ page: 1, limit: 100 });
+      if (firstResponse.success && firstResponse.data) {
+        allCases.push(...firstResponse.data.cases);
+        totalCases = firstResponse.data.total;
+        
+        // Continue fetching remaining pages
+        while (allCases.length < totalCases && firstResponse.data.cases.length > 0) {
+          page++;
+          const response = await rmaService.getAllRMACases({ page, limit: 100 });
+          if (response.success && response.data && response.data.cases.length > 0) {
+            allCases.push(...response.data.cases);
+          } else {
+            break;
+          }
+        }
+      }
+      
+      console.log(`RMAList: Loaded ${allCases.length} RMA cases (total: ${totalCases})`);
+      setAllRMACases(allCases);
+      setIsInitialLoad(false);
+    } catch (error) {
+      console.error('Error loading all RMA cases:', error);
+    } finally {
+      setLoadingAllCases(false);
+    }
+  };
+
+  // Load ALL RMA cases once on mount (no pagination)
+  useEffect(() => {
+    fetchAllCases();
+  }, []); // Only run once on mount
+
   // Debug: Log when dialog state changes
   useEffect(() => {
     console.log('showExportDialog state changed:', showExportDialog);
   }, [showExportDialog]);
-
-  // Reload cases when backend filters or pagination change
-  useEffect(() => {
-    const filters: any = {};
-    if (statusFilter !== 'all') filters.status = statusFilter;
-    if (typeFilter !== 'all') filters.rmaType = typeFilter;
-    if (debouncedSearchTerm) filters.search = debouncedSearchTerm;
-    loadCases({ ...filters, page, limit }).then(() => {
-      setIsInitialLoad(false);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, typeFilter, debouncedSearchTerm, page, limit]);
 
   useEffect(() => {
     console.log('showExportDialog state changed:', showExportDialog);
@@ -199,43 +228,91 @@ export function RMAList({ currentUser }: RMAListProps) {
     }
   };
 
-  // Available years (from data)
+  // Available years (from ALL cases)
   const availableYears: number[] = Array.from(
     new Set(
-      rmaCases
+      allRMACases
         .map(r => getYearFromDate(r.rmaRaisedDate))
         .filter((y): y is number => y !== null)
     )
   );
   availableYears.sort((a, b) => b - a);
 
+  // Check if any filters are active (search, status, type, date range, year, age)
+  const hasActiveFilters = debouncedSearchTerm || 
+    statusFilter !== 'all' || 
+    typeFilter !== 'all' || 
+    dateFrom || 
+    dateTo || 
+    yearFilter !== 'all' || 
+    ageFilter !== 'all';
+
+  // Apply backend filters (status, type, search) - these are applied server-side when loading
+  // But since we load all cases, we need to apply them client-side too
+  // Only show results if there's a search term or active filters
+  const backendFilteredCases = hasActiveFilters ? allRMACases.filter(r => {
+    if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+    if (typeFilter !== 'all' && r.rmaType !== typeFilter) return false;
+    if (debouncedSearchTerm) {
+      const search = debouncedSearchTerm.toLowerCase();
+      const siteName = getSiteName(r.site || r.siteName);
+      const matchesSearch =
+        (r.rmaNumber?.toLowerCase() || '').includes(search) ||
+        (r.callLogNumber?.toLowerCase() || '').includes(search) ||
+        (r.rmaOrderNumber?.toLowerCase() || '').includes(search) ||
+        (siteName?.toLowerCase() || '').includes(search) ||
+        (r.productName?.toLowerCase() || '').includes(search) ||
+        (r.serialNumber?.toLowerCase() || '').includes(search) ||
+        (r.defectivePartName?.toLowerCase() || '').includes(search) ||
+        (r.defectivePartNumber?.toLowerCase() || '').includes(search);
+      if (!matchesSearch) return false;
+    }
+    return true;
+  }) : [];
+
   // Apply date range filter first (takes precedence over year filter)
   const dateRangeFilteredCases = (dateFrom || dateTo)
-    ? rmaCases.filter(r => isDateInRange(r.rmaRaisedDate, dateFrom, dateTo))
-    : rmaCases;
+    ? backendFilteredCases.filter(r => isDateInRange(r.rmaRaisedDate, dateFrom, dateTo))
+    : backendFilteredCases;
 
   // Apply year filter (only if date range is not active)
   const yearFilteredCases = (dateFrom || dateTo)
     ? dateRangeFilteredCases // Date range takes precedence
     : (yearFilter === 'all'
-        ? rmaCases
-        : rmaCases.filter(r => getYearFromDate(r.rmaRaisedDate) === Number(yearFilter)));
+        ? dateRangeFilteredCases
+        : dateRangeFilteredCases.filter(r => getYearFromDate(r.rmaRaisedDate) === Number(yearFilter)));
 
-  // Calculate statistics for filtered cases
-  const rmaStats = {
-    total: yearFilteredCases.length,
-    open: yearFilteredCases.filter(r => r.status === 'open').length,
-    rmaRaised: yearFilteredCases.filter(r => r.status === 'rma_raised_yet_to_deliver').length,
-    inTransit: yearFilteredCases.filter(r => r.status === 'faulty_in_transit_to_cds').length,
-    closed: yearFilteredCases.filter(r => r.status === 'closed').length,
-    cancelled: yearFilteredCases.filter(r => r.status === 'cancelled').length,
-    dnr: yearFilteredCases.filter(r => r.isDefectivePartDNR === true).length,
-  };
+  // For statistics: show ALL cases when no filters are applied, otherwise show filtered cases
+  const casesForStats = !hasActiveFilters ? allRMACases : yearFilteredCases;
 
+  // Calculate statistics
+  const rmaStats = useMemo(() => {
+    const stats = {
+      total: casesForStats.length,
+      open: casesForStats.filter(r => r.status === 'open').length,
+      rmaRaised: casesForStats.filter(r => r.status === 'rma_raised_yet_to_deliver').length,
+      inTransit: casesForStats.filter(r => r.status === 'faulty_in_transit_to_cds').length,
+      closed: casesForStats.filter(r => r.status === 'closed').length,
+      cancelled: casesForStats.filter(r => r.status === 'cancelled').length,
+      dnr: casesForStats.filter(r => r.isDefectivePartDNR === true).length,
+    };
+    
+    // Debug log
+    if (process.env.NODE_ENV === 'development') {
+      console.log('RMA Statistics:', {
+        allRMACases: allRMACases.length,
+        casesForStats: casesForStats.length,
+        hasActiveFilters,
+        stats
+      });
+    }
+    
+    return stats;
+  }, [casesForStats, allRMACases.length, hasActiveFilters]);
+
+  // Apply age filter (client-side only, as it's not a backend filter)
+  // Note: status, type, and search are already applied in backendFilteredCases
   const filteredCases = yearFilteredCases.filter((rma) => {
-    const search = searchTerm.toLowerCase();
-    const siteName = getSiteName(rma.site || rma.siteName);
-
     // Age / overdue filter (based on shippedDate and status)
     const ageDays =
       ageFilter === 'all'
@@ -261,20 +338,7 @@ export function RMAList({ currentUser }: RMAListProps) {
       }
     }
 
-    const matchesSearch =
-      (rma.rmaNumber?.toLowerCase() || '').includes(search) ||
-      (rma.callLogNumber?.toLowerCase() || '').includes(search) ||
-      (rma.rmaOrderNumber?.toLowerCase() || '').includes(search) ||
-      (siteName?.toLowerCase() || '').includes(search) ||
-      (rma.productName?.toLowerCase() || '').includes(search) ||
-      (rma.serialNumber?.toLowerCase() || '').includes(search) ||
-      (rma.defectivePartName?.toLowerCase() || '').includes(search) ||
-      (rma.defectivePartNumber?.toLowerCase() || '').includes(search);
-
-    const matchesStatus = statusFilter === 'all' || rma.status === statusFilter;
-    const matchesType = typeFilter === 'all' || rma.rmaType === typeFilter;
-
-    return matchesSearch && matchesStatus && matchesType && matchesAge;
+    return matchesAge;
   });
 
   // Helper to escape CSV values (handles commas, quotes, newlines)
@@ -422,9 +486,9 @@ export function RMAList({ currentUser }: RMAListProps) {
       }
 
       // Filter cases by export date range if set
-      let casesToExport = rmaCases;
+      let casesToExport = allRMACases;
       if (exportDateFrom || exportDateTo) {
-        casesToExport = rmaCases.filter(r => isDateInRange(r.rmaRaisedDate, exportDateFrom, exportDateTo));
+        casesToExport = allRMACases.filter(r => isDateInRange(r.rmaRaisedDate, exportDateFrom, exportDateTo));
       }
 
       if (casesToExport.length === 0) {
@@ -495,7 +559,7 @@ export function RMAList({ currentUser }: RMAListProps) {
 
   // Get overdue RMA cases (30+ days in transit)
   const getOverdueRMAs = (minDays: number = 30) => {
-    return rmaCases.filter(rma => {
+    return allRMACases.filter(rma => {
       // Must be in "faulty_in_transit_to_cds" status
       if (rma.status !== 'faulty_in_transit_to_cds') return false;
       
@@ -622,7 +686,7 @@ export function RMAList({ currentUser }: RMAListProps) {
   };
 
   // Only show full page loader on initial load
-  if (loading && isInitialLoad && rmaCases.length === 0) {
+  if (loadingAllCases && isInitialLoad) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -633,18 +697,8 @@ export function RMAList({ currentUser }: RMAListProps) {
     );
   }
 
-  // Error state
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-        <p className="text-red-700 font-semibold mb-2">Error Loading RMA Cases</p>
-        <p className="text-red-600 text-sm">{error}</p>
-      </div>
-    );
-  }
-
   if (selectedRMA) {
-    const rma = rmaCases.find(r => r.id === selectedRMA);
+    const rma = allRMACases.find(r => r.id === selectedRMA);
     if (rma) {
       return (
         <RMADetail
@@ -653,6 +707,8 @@ export function RMAList({ currentUser }: RMAListProps) {
           onClose={() => setSelectedRMA(null)}
           onUpdate={async (id, data, userEmail, action, details) => {
             await updateCase(id, data);
+            // Reload all cases after update
+            await fetchAllCases();
           }}
         />
       );
@@ -668,6 +724,8 @@ export function RMAList({ currentUser }: RMAListProps) {
           const result = await createCase(data);
           if (result.success) {
             setShowForm(false);
+            // Reload all cases after create
+            await fetchAllCases();
           } else {
             alert(result.message || 'Failed to create RMA case');
           }
@@ -685,13 +743,13 @@ export function RMAList({ currentUser }: RMAListProps) {
           <p className="text-sm text-gray-600">Return Material Authorization & Part Tracking</p>
         </div>
         <ProtectedComponent permission="rma:create">
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            New RMA Case
-          </button>
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          New RMA Case
+        </button>
         </ProtectedComponent>
       </div>
 
@@ -852,9 +910,9 @@ export function RMAList({ currentUser }: RMAListProps) {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search by RMA #, call log, site, product, serial, or part..."
-                className={`w-full pl-10 ${loading && !isInitialLoad ? 'pr-10' : 'pr-4'} py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                className={`w-full pl-10 ${loadingAllCases && !isInitialLoad ? 'pr-10' : 'pr-4'} py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
               />
-              {loading && !isInitialLoad && (
+              {loadingAllCases && !isInitialLoad && (
                 <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
               )}
             </div>
@@ -926,61 +984,28 @@ export function RMAList({ currentUser }: RMAListProps) {
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-200">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div>
-              <p className="text-sm text-gray-600">
-                Showing {filteredCases.length} of {total} total cases (Page {currentPage})
-                {(dateFrom || dateTo || yearFilter !== 'all') && (
-                  <span className="text-blue-600 font-medium ml-1">
-                    (with client-side filters applied)
-                  </span>
-                )}
-              </p>
-              {(dateFrom || dateTo) && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Date range: {dateFrom ? formatDate(dateFrom) : 'Any start'} to {dateTo ? formatDate(dateTo) : 'Any end'}
-                </p>
+          <div>
+            <p className="text-sm text-gray-600">
+              Showing {filteredCases.length} case{filteredCases.length !== 1 ? 's' : ''}
+              {filteredCases.length !== allRMACases.length && (
+                <span className="text-blue-600 font-medium ml-1">
+                  (filtered from {allRMACases.length} total)
+                </span>
               )}
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Per page:</label>
-              <select
-                value={limit}
-                onChange={(e) => {
-                  setLimit(Number(e.target.value));
-                  setPage(1); // Reset to first page when changing limit
-                }}
-                className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
-            </div>
+            </p>
+            {(dateFrom || dateTo || yearFilter !== 'all' || statusFilter !== 'all' || typeFilter !== 'all' || searchTerm) && (
+              <p className="text-xs text-gray-500 mt-1">
+                Filters: {[
+                  dateFrom || dateTo ? `Date: ${dateFrom ? formatDate(dateFrom) : 'Any'} to ${dateTo ? formatDate(dateTo) : 'Any'}` : null,
+                  yearFilter !== 'all' ? `Year: ${yearFilter}` : null,
+                  statusFilter !== 'all' ? `Status: ${statusFilter}` : null,
+                  typeFilter !== 'all' ? `Type: ${typeFilter}` : null,
+                  searchTerm ? `Search: "${searchTerm}"` : null
+                ].filter(Boolean).join(', ')}
+              </p>
+            )}
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-            {/* Pagination Controls */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1 || loading}
-                className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Previous page"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="text-sm text-gray-600">
-                Page {currentPage} of {Math.ceil(total / limit) || 1}
-              </span>
-              <button
-                onClick={() => setPage(p => p + 1)}
-                disabled={currentPage >= Math.ceil(total / limit) || loading}
-                className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Next page"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
             <button
               onClick={handleExportOverdueToExcel}
               className="flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-red-700 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors border border-red-200 w-full sm:w-auto"
@@ -1025,8 +1050,124 @@ export function RMAList({ currentUser }: RMAListProps) {
                 <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredCases.map((rma) => (
+            <tbody className="divide-y divide-gray-200 bg-white">
+              {!hasActiveFilters ? (
+                <tr>
+                  <td colSpan={13} className="px-6 py-20">
+                    <div className="flex flex-col items-center justify-center max-w-2xl mx-auto">
+                      {/* Icon Container */}
+                      <div className="relative mb-8">
+                        <div className="relative inline-flex items-center justify-center">
+                          {/* Subtle background glow */}
+                          <div className="absolute inset-0 bg-blue-200 rounded-full blur-3xl opacity-30"></div>
+                          {/* Main icon circle */}
+                          <div className="relative bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full p-6 shadow-xl">
+                            <Search className="w-10 h-10 text-white" strokeWidth={2} />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Title and Description */}
+                      <div className="text-center mb-8">
+                        <h3 className="text-2xl font-bold text-gray-900 mb-3 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                          Start Your Search
+                        </h3>
+                        <p className="text-base text-gray-600 leading-relaxed max-w-lg mx-auto">
+                          Enter a search term or apply filters to view RMA cases. You can search by RMA number, call log, site name, product, serial number, or part details.
+                        </p>
+                      </div>
+                      
+                      {/* Filter Pills with Icons */}
+                      <div className="flex flex-wrap gap-3 justify-center">
+                        <div className="group relative">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full blur opacity-20 group-hover:opacity-30 transition duration-300"></div>
+                          <span className="relative inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 border border-blue-200 shadow-sm">
+                            <Search className="w-3.5 h-3.5" />
+                            Search
+                          </span>
+                        </div>
+                        <div className="group relative">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full blur opacity-20 group-hover:opacity-30 transition duration-300"></div>
+                          <span className="relative inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-gradient-to-r from-purple-50 to-purple-100 text-purple-700 border border-purple-200 shadow-sm">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            Status
+                          </span>
+                        </div>
+                        <div className="group relative">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-green-500 to-green-600 rounded-full blur opacity-20 group-hover:opacity-30 transition duration-300"></div>
+                          <span className="relative inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-gradient-to-r from-green-50 to-green-100 text-green-700 border border-green-200 shadow-sm">
+                            <Package className="w-3.5 h-3.5" />
+                            Type
+                          </span>
+                        </div>
+                        <div className="group relative">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500 to-orange-600 rounded-full blur opacity-20 group-hover:opacity-30 transition duration-300"></div>
+                          <span className="relative inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-gradient-to-r from-orange-50 to-orange-100 text-orange-700 border border-orange-200 shadow-sm">
+                            <Calendar className="w-3.5 h-3.5" />
+                            Date Range
+                          </span>
+                        </div>
+                        <div className="group relative">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 to-pink-600 rounded-full blur opacity-20 group-hover:opacity-30 transition duration-300"></div>
+                          <span className="relative inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-gradient-to-r from-pink-50 to-pink-100 text-pink-700 border border-pink-200 shadow-sm">
+                            <Clock className="w-3.5 h-3.5" />
+                            Year
+                          </span>
+                        </div>
+                        <div className="group relative">
+                          <div className="absolute -inset-0.5 bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-full blur opacity-20 group-hover:opacity-30 transition duration-300"></div>
+                          <span className="relative inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-gradient-to-r from-yellow-50 to-yellow-100 text-yellow-700 border border-yellow-200 shadow-sm">
+                            <TrendingUp className="w-3.5 h-3.5" />
+                            Age
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredCases.length === 0 ? (
+                <tr>
+                  <td colSpan={13} className="px-6 py-20">
+                    <div className="flex flex-col items-center justify-center max-w-xl mx-auto">
+                      {/* Icon Container */}
+                      <div className="relative mb-8">
+                        <div className="relative inline-flex items-center justify-center">
+                          {/* Subtle background glow */}
+                          <div className="absolute inset-0 bg-gray-300 rounded-full blur-3xl opacity-30"></div>
+                          {/* Main icon circle */}
+                          <div className="relative bg-gradient-to-br from-gray-400 to-slate-500 rounded-full p-6 shadow-xl">
+                            <Package className="w-10 h-10 text-white" strokeWidth={2} />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Title and Description */}
+                      <div className="text-center mb-8">
+                        <h3 className="text-2xl font-bold text-gray-900 mb-3">No Results Found</h3>
+                        <p className="text-base text-gray-600 leading-relaxed max-w-md mx-auto mb-6">
+                          No RMA cases match your current search criteria. Try adjusting your filters or search terms to find what you're looking for.
+                        </p>
+                        <button
+                          onClick={() => {
+                            setSearchTerm('');
+                            setStatusFilter('all');
+                            setTypeFilter('all');
+                            setDateFrom('');
+                            setDateTo('');
+                            setYearFilter('all');
+                            setAgeFilter('all');
+                          }}
+                          className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200"
+                        >
+                          <X className="w-4 h-4" />
+                          Clear All Filters
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredCases.map((rma) => (
                 <tr key={rma.id} className="hover:bg-gray-50">
                   {/* RMA # */}
                   <td className="px-4 py-4 whitespace-nowrap min-w-[110px]">
@@ -1190,7 +1331,8 @@ export function RMAList({ currentUser }: RMAListProps) {
                     </button>
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>

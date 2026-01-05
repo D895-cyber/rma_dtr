@@ -23,6 +23,7 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
         { productName: { contains: search as string, mode: 'insensitive' } },
         { serialNumber: { contains: search as string, mode: 'insensitive' } },
         { symptoms: { contains: search as string, mode: 'insensitive' } },
+        { site: { siteName: { contains: search as string, mode: 'insensitive' } } },
       ];
     }
 

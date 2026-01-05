@@ -2,19 +2,131 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { AlertTriangle, TrendingUp, Calendar, Download, Filter, X } from 'lucide-react';
 import { useDTRCases, useRMACases, useUsersAPI } from '../hooks/useAPI';
+import { dtrService } from '../services/dtr.service';
+import { rmaService } from '../services/rma.service';
 
 interface AnalyticsProps {
   currentUser: any;
 }
 
 export function Analytics({ currentUser }: AnalyticsProps) {
-  const { cases: allDTRCases } = useDTRCases();
-  const { cases: allRMACases } = useRMACases();
   const { users } = useUsersAPI();
+  const [allDTRCases, setAllDTRCases] = useState<any[]>([]);
+  const [allRMACases, setAllRMACases] = useState<any[]>([]);
+  const [loadingAllCases, setLoadingAllCases] = useState(true);
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [selectedSite, setSelectedSite] = useState('all');
   const [selectedEngineer, setSelectedEngineer] = useState('all');
   const [timeView, setTimeView] = useState<'monthly' | 'quarterly'>('monthly');
+  
+  // Load ALL cases for analytics by fetching all pages
+  useEffect(() => {
+    const fetchAllCases = async () => {
+      setLoadingAllCases(true);
+      
+      // Add a timeout to prevent infinite loading (5 minutes max)
+      const timeoutId = setTimeout(() => {
+        console.warn('Analytics loading timeout - setting loading to false');
+        setLoadingAllCases(false);
+      }, 5 * 60 * 1000);
+      
+      try {
+        // Fetch all DTR cases
+        const dtrCases: any[] = [];
+        let dtrPage = 1;
+        let dtrTotal = 0;
+        
+        try {
+          // First, get the total count
+          const firstDTRResponse = await dtrService.getAllDTRCases({ page: 1, limit: 100 });
+          console.log('DTR Response:', firstDTRResponse);
+          
+          if (firstDTRResponse && firstDTRResponse.success && firstDTRResponse.data) {
+            const cases = firstDTRResponse.data.cases || [];
+            dtrCases.push(...cases);
+            dtrTotal = firstDTRResponse.data.total || cases.length;
+            
+            // Continue fetching remaining pages
+            if (dtrTotal > cases.length) {
+              while (dtrCases.length < dtrTotal) {
+                dtrPage++;
+                try {
+                  const response = await dtrService.getAllDTRCases({ page: dtrPage, limit: 100 });
+                  if (response && response.success && response.data && response.data.cases && response.data.cases.length > 0) {
+                    dtrCases.push(...response.data.cases);
+                  } else {
+                    break;
+                  }
+                } catch (pageError) {
+                  console.error(`Error loading DTR page ${dtrPage}:`, pageError);
+                  break;
+                }
+              }
+            }
+          } else {
+            console.warn('DTR response was not successful or missing data:', firstDTRResponse);
+          }
+        } catch (dtrError) {
+          console.error('Error loading DTR cases:', dtrError);
+        }
+        
+        // Fetch all RMA cases
+        const rmaCases: any[] = [];
+        let rmaPage = 1;
+        let rmaTotal = 0;
+        
+        try {
+          // First, get the total count
+          const firstRMAResponse = await rmaService.getAllRMACases({ page: 1, limit: 100 });
+          console.log('RMA Response:', firstRMAResponse);
+          
+          if (firstRMAResponse && firstRMAResponse.success && firstRMAResponse.data) {
+            const cases = firstRMAResponse.data.cases || [];
+            rmaCases.push(...cases);
+            rmaTotal = firstRMAResponse.data.total || cases.length;
+            
+            // Continue fetching remaining pages
+            if (rmaTotal > cases.length) {
+              while (rmaCases.length < rmaTotal) {
+                rmaPage++;
+                try {
+                  const response = await rmaService.getAllRMACases({ page: rmaPage, limit: 100 });
+                  if (response && response.success && response.data && response.data.cases && response.data.cases.length > 0) {
+                    rmaCases.push(...response.data.cases);
+                  } else {
+                    break;
+                  }
+                } catch (pageError) {
+                  console.error(`Error loading RMA page ${rmaPage}:`, pageError);
+                  break;
+                }
+              }
+            }
+          } else {
+            console.warn('RMA response was not successful or missing data:', firstRMAResponse);
+          }
+        } catch (rmaError) {
+          console.error('Error loading RMA cases:', rmaError);
+        }
+        
+        console.log(`Analytics: Loaded ${dtrCases.length} DTR cases (total: ${dtrTotal})`);
+        console.log(`Analytics: Loaded ${rmaCases.length} RMA cases (total: ${rmaTotal})`);
+        
+        setAllDTRCases(dtrCases);
+        setAllRMACases(rmaCases);
+      } catch (error) {
+        console.error('Error loading all cases for analytics:', error);
+        // Set empty arrays on error so the page can still render
+        setAllDTRCases([]);
+        setAllRMACases([]);
+      } finally {
+        clearTimeout(timeoutId);
+        setLoadingAllCases(false);
+      }
+    };
+    
+    fetchAllCases();
+  }, []); // Only run once on mount
 
   // Helper function to safely get site name
   const getSiteName = (site: any): string => {
@@ -40,7 +152,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     return true;
   };
 
-  // Apply filters to data
+  // Apply filters to data (must be called before conditional return)
   const filteredData = useMemo(() => {
     let filteredDTR = [...allDTRCases];
     let filteredRMA = [...allRMACases];
@@ -357,12 +469,16 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   });
   
   const avgReturnTime = closedRMAsWithValidReturnDates.length > 0
-    ? Math.round(
-        closedRMAsWithValidReturnDates.reduce((sum, rma) => {
+    ? (() => {
+        const totalDays = closedRMAsWithValidReturnDates.reduce((sum, rma) => {
           const days = daysBetween(rma.shippedDate!, rma.returnShippedDate!);
           return sum + (days || 0);
-        }, 0) / closedRMAsWithValidReturnDates.length
-      )
+        }, 0);
+        const avg = Math.round(totalDays / closedRMAsWithValidReturnDates.length);
+        // If average is 0 and we have cases, it means all were same-day returns
+        // Return 0 to show "0 days" (same day returns)
+        return avg;
+      })()
     : null;
 
   // Defective vs Replaced parts
@@ -431,6 +547,18 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   };
 
   const hasActiveFilters = dateRange.from || dateRange.to || selectedSite !== 'all' || selectedEngineer !== 'all';
+
+  // Show loading state while fetching all cases (after all hooks)
+  if (loadingAllCases) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading all cases for analytics...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

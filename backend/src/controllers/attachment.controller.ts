@@ -87,20 +87,20 @@ export const uploadAttachment = [
         // Continue with local file storage if Cloudinary fails
       }
 
-      const attachment = await prisma.caseAttachment.create({
-        data: {
-          fileName: req.file.originalname,
-          filePath: req.file.path || undefined, // Keep for backward compatibility
-          fileSize: req.file.size,
-          mimeType: req.file.mimetype,
-          caseId,
-          caseType,
-          description,
-          uploadedBy: req.user!.userId,
-          cloudinaryUrl: cloudinaryUrl || undefined,
-          cloudinaryPublicId: cloudinaryPublicId || undefined,
-          fileType: fileType || undefined,
-        },
+            const attachment = await prisma.caseAttachment.create({
+              data: {
+                fileName: req.file.originalname,
+                filePath: (req.file as any).path || undefined, // Keep for backward compatibility (disk storage)
+                fileSize: req.file.size,
+                mimeType: req.file.mimetype,
+                caseId,
+                caseType,
+                description,
+                uploadedBy: req.user!.userId,
+                cloudinaryUrl: cloudinaryUrl || undefined,
+                cloudinaryPublicId: cloudinaryPublicId || undefined,
+                fileType: fileType || undefined,
+              },
         include: {
           uploader: {
             select: { id: true, name: true, email: true },

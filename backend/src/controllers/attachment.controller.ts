@@ -19,10 +19,7 @@ export const uploadAttachment = [
       const { caseId, caseType, description } = req.body;
 
       if (!caseId || !caseType) {
-        // Delete uploaded file if validation fails
-        if (req.file.path) {
-          fs.unlinkSync(req.file.path);
-        }
+        // No need to delete file if using memory storage (no file saved)
         return sendError(res, 'caseId and caseType are required', 400);
       }
 
@@ -30,23 +27,14 @@ export const uploadAttachment = [
       if (caseType === 'DTR') {
         const dtrCase = await prisma.dtrCase.findUnique({ where: { id: caseId } });
         if (!dtrCase) {
-          if (req.file.path && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-          }
           return sendError(res, 'DTR case not found', 404);
         }
       } else if (caseType === 'RMA') {
         const rmaCase = await prisma.rmaCase.findUnique({ where: { id: caseId } });
         if (!rmaCase) {
-          if (req.file.path && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-          }
           return sendError(res, 'RMA case not found', 404);
         }
       } else {
-        if (req.file.path && fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path);
-        }
         return sendError(res, 'Invalid caseType. Must be DTR or RMA', 400);
       }
 

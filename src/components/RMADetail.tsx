@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { X, Edit, Check, Package, Truck, History, Mail } from 'lucide-react';
 import { RMACase, useUsersAPI } from '../hooks/useAPI';
 import rmaService from '../services/rma.service';
+import { FileUpload } from './FileUpload';
+import { AttachmentList } from './AttachmentList';
 
 interface RMADetailProps {
   rma: RMACase;
@@ -53,6 +55,7 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
   const [showAudit, setShowAudit] = useState(false);
   const [clientEmail, setClientEmail] = useState('');
   const [sendingClientEmail, setSendingClientEmail] = useState(false);
+  const [refreshAttachments, setRefreshAttachments] = useState(0);
   // Track original DNR value to detect changes
   const originalDNRValue = rma.isDefectivePartDNR === true || false;
   
@@ -903,6 +906,19 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
             </button>
           </div>
         )}
+
+        {/* File Attachments Section */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mt-6">
+          <h3 className="text-gray-900 mb-4">Attachments</h3>
+          <div className="space-y-4">
+            <FileUpload
+              caseId={rma.id}
+              caseType="RMA"
+              onUploadComplete={() => setRefreshAttachments(prev => prev + 1)}
+            />
+            <AttachmentList key={refreshAttachments} caseId={rma.id} caseType="RMA" />
+          </div>
+        </div>
         </div>
       ) : (
         // DNR Notice - Shown when defective part will not be returned

@@ -16,6 +16,9 @@ Use this checklist before deploying to Vercel to ensure everything is configured
   - [ ] `NODE_ENV` - Set to "production"
   - [ ] `FRONTEND_URL` - Your Vercel app URL
   - [ ] `VITE_API_URL` - API endpoint URL
+  - [ ] `CLOUDINARY_CLOUD_NAME` - Cloudinary cloud name
+  - [ ] `CLOUDINARY_API_KEY` - Cloudinary API key
+  - [ ] `CLOUDINARY_API_SECRET` - Cloudinary API secret
 
 - [ ] **Code Quality**
   - [ ] All tests passing (if applicable)

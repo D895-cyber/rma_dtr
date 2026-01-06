@@ -32,6 +32,11 @@ model User {
   assignedRmaCases   RmaCase[]     @relation("RmaAssignedTo")
   auditLogs          AuditLog[]
   notifications      Notification[]
+  notificationPreferences NotificationPreference?
+  createdTemplates   CaseTemplate[] @relation("TemplateCreatedBy")
+  savedSearches      SavedSearch[]
+  createdRules        AssignmentRule[] @relation("RuleCreatedBy")
+  uploadedAttachments CaseAttachment[]
 
   @@map("users")
 }
@@ -328,5 +333,141 @@ enum NotificationType {
   status_change  @map("status-change")
   escalation
   info
+}
+
+// ============================================
+// NOTIFICATION PREFERENCES
+// ============================================
+
+model NotificationPreference {
+  id        String   @id @default(uuid())
+  userId    String   @unique @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Email preferences
+  emailCaseAssigned     Boolean @default(true) @map("email_case_assigned")
+  emailStatusChanged    Boolean @default(true) @map("email_status_changed")
+  emailOverdueAlert     Boolean @default(true) @map("email_overdue_alert")
+  emailEscalation       Boolean @default(true) @map("email_escalation")
+  emailCommentAdded     Boolean @default(false) @map("email_comment_added")
+  
+  // In-app preferences
+  inAppCaseAssigned     Boolean @default(true) @map("in_app_case_assigned")
+  inAppStatusChanged    Boolean @default(true) @map("in_app_status_changed")
+  inAppOverdueAlert     Boolean @default(true) @map("in_app_overdue_alert")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("notification_preferences")
+}
+
+// ============================================
+// CASE TEMPLATES
+// ============================================
+
+model CaseTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  description String?  @db.Text
+  caseType    String   @map("case_type") // 'DTR' or 'RMA'
+  
+  // Template data (JSON field)
+  templateData Json     @map("template_data")
+  
+  // Metadata
+  createdBy   String   @map("created_by")
+  creator     User     @relation("TemplateCreatedBy", fields: [createdBy], references: [id])
+  isPublic    Boolean  @default(false) @map("is_public")
+  usageCount  Int      @default(0) @map("usage_count")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("case_templates")
+}
+
+// ============================================
+// SAVED SEARCHES
+// ============================================
+
+model SavedSearch {
+  id          String   @id @default(uuid())
+  name        String
+  description String?   @db.Text
+  caseType    String   @map("case_type") // 'DTR' or 'RMA' or 'ALL'
+  
+  // Search criteria (JSON)
+  filters     Json
+  
+  // Metadata
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isPublic    Boolean  @default(false) @map("is_public")
+  usageCount  Int      @default(0) @map("usage_count")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("saved_searches")
+}
+
+// ============================================
+// AUTO-ASSIGNMENT RULES
+// ============================================
+
+model AssignmentRule {
+  id          String   @id @default(uuid())
+  name        String
+  description String?  @db.Text
+  caseType    String   @map("case_type") // 'DTR' or 'RMA'
+  isActive    Boolean  @default(true) @map("is_active")
+  priority    Int      @default(0) // Higher priority = checked first
+  
+  // Rule conditions (JSON)
+  conditions  Json     // e.g., { siteId: "xxx", severity: "high" }
+  
+  // Assignment action
+  assignTo    String?  @map("assign_to") // User ID or 'round-robin' or 'least-busy'
+  assignToRole String? @map("assign_to_role") // Role name
+  
+  // Metadata
+  createdBy   String   @map("created_by")
+  creator     User     @relation("RuleCreatedBy", fields: [createdBy], references: [id])
+  matchCount  Int      @default(0) @map("match_count")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("assignment_rules")
+}
+
+// ============================================
+// FILE ATTACHMENTS
+// ============================================
+
+model CaseAttachment {
+  id          String   @id @default(uuid())
+  fileName    String   @map("file_name")
+  filePath    String?  @map("file_path") // Optional: keep for backward compatibility
+  fileSize    Int      @map("file_size") // Bytes
+  mimeType    String   @map("mime_type")
+  caseId      String   @map("case_id")
+  caseType    String   @map("case_type") // 'DTR' or 'RMA'
+  
+  // Cloudinary fields
+  cloudinaryUrl      String? @map("cloudinary_url")
+  cloudinaryPublicId String? @map("cloudinary_public_id")
+  fileType           String? @map("file_type") // 'image', 'log', 'document'
+  
+  // Metadata
+  uploadedBy  String   @map("uploaded_by")
+  uploader    User     @relation(fields: [uploadedBy], references: [id])
+  description String?  @db.Text
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([caseId, caseType])
+  @@map("case_attachments")
 }
 

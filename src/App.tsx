@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dashboard } from './components/Dashboard';
 import { DTRList } from './components/DTRList';
 import { RMAList } from './components/RMAList';
@@ -9,20 +9,58 @@ import { UserManagement } from './components/UserManagement';
 import { Notifications } from './components/Notifications';
 import { PartsManagement } from './components/PartsManagement';
 import { ModelsManagement } from './components/ModelsManagement';
+import { TemplateManagement } from './components/TemplateManagement';
 import { AuthScreen } from './components/AuthScreen';
 import { useAuth } from './contexts/AuthContext';
 import { usePermissions } from './hooks/usePermissions';
-import { LayoutDashboard, FileText, Package, BarChart3, Building2, Users, Wrench, Box, LogOut, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, FileText, Package, BarChart3, Building2, Users, Wrench, Box, LogOut, TrendingUp, FileStack } from 'lucide-react';
+
+type TabId = 'dashboard' | 'dtr' | 'rma' | 'analytics' | 'rma-analytics' | 'masterdata' | 'models' | 'parts' | 'users' | 'templates';
 
 export default function App() {
   // ALL HOOKS MUST BE CALLED AT THE TOP - BEFORE ANY CONDITIONAL RETURNS
   const { user, isAuthenticated, isLoading, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'dtr' | 'rma' | 'analytics' | 'rma-analytics' | 'masterdata' | 'models' | 'parts' | 'users'>('dashboard');
+  
+  // Get initial tab from URL hash, default to 'dashboard'
+  const getInitialTab = (): TabId => {
+    const hash = window.location.hash.slice(1); // Remove '#'
+    const validTabs: TabId[] = ['dashboard', 'dtr', 'rma', 'analytics', 'rma-analytics', 'masterdata', 'models', 'parts', 'users', 'templates'];
+    return validTabs.includes(hash as TabId) ? (hash as TabId) : 'dashboard';
+  };
+  
+  const [activeTab, setActiveTab] = useState<TabId>(getInitialTab());
   const { can } = usePermissions(); // Moved here - must be called unconditionally
+
+  // Update URL hash when tab changes (only if different)
+  useEffect(() => {
+    const currentHash = window.location.hash.slice(1);
+    if (currentHash !== activeTab) {
+      window.location.hash = activeTab;
+    }
+  }, [activeTab]);
+
+  // Listen for hash changes (back/forward browser buttons)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const newTab = getInitialTab();
+      if (newTab !== activeTab) {
+        setActiveTab(newTab);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [activeTab]);
+
+  const handleTabChange = (tab: TabId) => {
+    setActiveTab(tab);
+    window.location.hash = tab;
+  };
 
   const handleLogout = () => {
     logout();
     setActiveTab('dashboard');
+    window.location.hash = 'dashboard';
   };
 
   // Show loading state while checking authentication
@@ -55,6 +93,7 @@ export default function App() {
     { id: 'masterdata', label: 'Master Data', icon: Building2, permission: 'master:view' as const },
     { id: 'models', label: 'Models', icon: Box, permission: 'models:view' as const },
     { id: 'parts', label: 'Parts', icon: Wrench, permission: 'parts:view' as const },
+    { id: 'templates', label: 'Templates', icon: FileStack, permission: 'dtr:create' as const },
   ];
 
   // Filter nav items based on user permissions
@@ -107,7 +146,7 @@ export default function App() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id as any)}
+                  onClick={() => handleTabChange(item.id as TabId)}
                   className={`
                     flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors
                     ${isActive
@@ -127,7 +166,7 @@ export default function App() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id as any)}
+                  onClick={() => handleTabChange(item.id as TabId)}
                   className={`
                     flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors
                     ${isActive
@@ -155,6 +194,7 @@ export default function App() {
         {activeTab === 'masterdata' && <MasterData currentUser={currentUser} />}
         {activeTab === 'models' && <ModelsManagement />}
         {activeTab === 'parts' && <PartsManagement />}
+        {activeTab === 'templates' && <TemplateManagement />}
         {activeTab === 'users' && <UserManagement currentUser={currentUser} />}
       </main>
     </div>

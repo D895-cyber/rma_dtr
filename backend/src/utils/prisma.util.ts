@@ -22,10 +22,10 @@ if (!databaseUrl) {
     url.searchParams.delete('connect_timeout');
     
     // Add optimized connection pool parameters
-    // Increased limits to handle concurrent requests better
-    url.searchParams.set('connection_limit', '50');
-    url.searchParams.set('pool_timeout', '20');
-    url.searchParams.set('connect_timeout', '10');
+    // Reduced limits to prevent exhaustion with Neon
+    url.searchParams.set('connection_limit', '10');
+    url.searchParams.set('pool_timeout', '10');
+    url.searchParams.set('connect_timeout', '5');
     
     databaseUrl = url.toString();
     console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 50, timeout: 20)');
@@ -35,7 +35,7 @@ if (!databaseUrl) {
     if (!databaseUrl.includes('connection_limit')) {
       const separator = databaseUrl.includes('?') ? '&' : '?';
       databaseUrl = `${databaseUrl}${separator}connection_limit=50&pool_timeout=20&connect_timeout=10`;
-      console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 50, timeout: 20)');
+      console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 10, timeout: 10)');
     }
   }
 }

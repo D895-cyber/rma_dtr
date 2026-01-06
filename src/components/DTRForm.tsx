@@ -1,14 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { DTRCase, useMasterDataAPI, useUsersAPI } from '../hooks/useAPI';
+import { SearchableSelect } from './ui/SearchableSelect';
+import { TemplateSelector } from './TemplateSelector';
+import { FileUpload } from './FileUpload';
+import { AttachmentList } from './AttachmentList';
+import { templateService, CaseTemplate } from '../services/template.service';
 
 interface DTRFormProps {
   currentUser: any;
   onClose: () => void;
   onSubmit: (data: Omit<DTRCase, 'id' | 'auditLog'>) => void;
+  caseId?: string; // For editing existing cases
 }
 
-export function DTRForm({ currentUser, onClose, onSubmit }: DTRFormProps) {
+export function DTRForm({ currentUser, onClose, onSubmit, caseId }: DTRFormProps) {
   const today = new Date().toISOString().split('T')[0];
   const { sites, loading: masterDataLoading, getAudisBySite, getProjectorByAudi } = useMasterDataAPI();
   const { users, loading: usersLoading, getEngineersList } = useUsersAPI();
@@ -47,6 +53,19 @@ export function DTRForm({ currentUser, onClose, onSubmit }: DTRFormProps) {
   const [selectedSite, setSelectedSite] = useState('');
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [availableAudis, setAvailableAudis] = useState<Array<{id: string; audiNo: string}>>([]);
+  const [refreshAttachments, setRefreshAttachments] = useState(0);
+
+  // Handle template selection
+  const handleTemplateSelect = (template: CaseTemplate) => {
+    const templateData = template.templateData as any;
+    setFormData(prev => ({
+      ...prev,
+      ...templateData,
+      // Don't override case number or dates
+      caseNumber: prev.caseNumber,
+      errorDate: prev.errorDate,
+    }));
+  };
 
   function generateCaseNumber() {
     const now = new Date();
@@ -166,31 +185,39 @@ export function DTRForm({ currentUser, onClose, onSubmit }: DTRFormProps) {
             />
           </div>
 
+          {/* Template Selector */}
+          <div className="md:col-span-2">
+            <label className="block text-sm text-gray-700 mb-2">
+              Use Template (Optional)
+            </label>
+            <TemplateSelector
+              caseType="DTR"
+              onSelectTemplate={handleTemplateSelect}
+            />
+          </div>
+
           <div>
             <label className="block text-sm text-gray-700 mb-2">
               Site Name <span className="text-red-500">*</span>
             </label>
-            <select
+            <SearchableSelect
+              options={sites.map(site => ({
+                value: site.siteName,
+                label: site.siteName,
+                id: site.id,
+              }))}
               value={selectedSite}
-              onChange={(e) => {
-                const siteName = e.target.value;
+              onChange={(siteName, option) => {
                 const site = sites.find(s => s.siteName === siteName);
                 setSelectedSite(siteName);
                 setSelectedSiteId(site?.id || '');
               }}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
+              placeholder={masterDataLoading ? 'Loading sites...' : sites.length === 0 ? 'No sites available' : 'Select Site'}
+              searchPlaceholder="Search sites..."
+              emptyMessage="No sites found"
               disabled={masterDataLoading}
-            >
-              <option value="">
-                {masterDataLoading ? 'Loading sites...' : sites.length === 0 ? 'No sites available' : 'Select Site'}
-              </option>
-              {sites.map(site => (
-                <option key={site.id} value={site.siteName}>
-                  {site.siteName}
-                </option>
-              ))}
-            </select>
+              required
+            />
             {sites.length === 0 && !masterDataLoading && (
               <p className="text-xs text-red-500 mt-1">
                 ⚠️ No sites found. Please add sites in Master Data first.
@@ -367,6 +394,25 @@ export function DTRForm({ currentUser, onClose, onSubmit }: DTRFormProps) {
             />
           </div>
         </div>
+
+        {/* File Attachments - Only show for existing cases */}
+        {caseId && (
+          <div className="md:col-span-2 space-y-4 pt-4 border-t border-gray-200">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Attachments
+              </label>
+              <FileUpload
+                caseId={caseId}
+                caseType="DTR"
+                onUploadComplete={() => setRefreshAttachments(prev => prev + 1)}
+              />
+            </div>
+            <div>
+              <AttachmentList key={refreshAttachments} caseId={caseId} caseType="DTR" />
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
           <button

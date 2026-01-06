@@ -2,17 +2,23 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { RMACase, useMasterDataAPI, useUsersAPI } from '../hooks/useAPI';
 import partsService, { Part } from '../services/parts.service';
+import { SearchableSelect } from './ui/SearchableSelect';
+import { TemplateSelector } from './TemplateSelector';
+import { FileUpload } from './FileUpload';
+import { AttachmentList } from './AttachmentList';
+import { templateService, CaseTemplate } from '../services/template.service';
 
 interface RMAFormProps {
   currentUser: any;
   dtrCaseNumber?: string;
   onClose: () => void;
   onSubmit: (data: Omit<RMACase, 'id' | 'auditLog'>) => void;
+  caseId?: string; // For editing existing cases
 }
 
-export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFormProps) {
+export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId }: RMAFormProps) {
   const today = new Date().toISOString().split('T')[0];
-  const { sites, getAudisBySite, getProjectorByAudi } = useMasterDataAPI();
+  const { sites, getAudisBySite, getProjectorByAudi, projectors } = useMasterDataAPI();
   const { users, loading: usersLoading } = useUsersAPI();
   
   // Get engineers reactively (updates when users load)
@@ -62,6 +68,24 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
   const [availableParts, setAvailableParts] = useState<Part[]>([]);
   const [loadingParts, setLoadingParts] = useState(false);
   const [useCustomPart, setUseCustomPart] = useState(false);
+  const [selectedPartId, setSelectedPartId] = useState<string>('');
+  const [projectorModelId, setProjectorModelId] = useState<string>('');
+  const [refreshAttachments, setRefreshAttachments] = useState(0);
+
+  // Handle template selection
+  const handleTemplateSelect = (template: CaseTemplate) => {
+    const templateData = template.templateData as any;
+    setFormData(prev => ({
+      ...prev,
+      ...templateData,
+      // Don't override case numbers or dates
+      callLogNumber: prev.callLogNumber,
+      rmaNumber: prev.rmaNumber,
+      rmaOrderNumber: prev.rmaOrderNumber,
+      rmaRaisedDate: prev.rmaRaisedDate,
+      customerErrorDate: prev.customerErrorDate,
+    }));
+  };
 
   function generateRMANumber() {
     const year = new Date().getFullYear();
@@ -98,23 +122,35 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
 
   // Handle audi selection - auto-fill projector details and load parts
   const handleAudiChange = async (audiId: string, audiNo: string) => {
-    const projector = getProjectorByAudi(selectedSite, audiNo);
-    if (projector) {
+    const projectorInfo = getProjectorByAudi(selectedSite, audiNo);
+    if (projectorInfo) {
+      // Find the full projector object to get projectorModelId
+      const fullProjector = projectors.find(p => p.id === projectorInfo.id);
+      
       setFormData(prev => ({
         ...prev,
         audiNo,
         audiId,
-        productName: projector.modelNo,
-        serialNumber: projector.serialNumber,
+        productName: projectorInfo.modelNo,
+        serialNumber: projectorInfo.serialNumber,
       }));
 
+      // Store projector model ID for creating custom parts
+      if (fullProjector?.projectorModelId) {
+        setProjectorModelId(fullProjector.projectorModelId);
+      } else if (fullProjector?.projectorModel?.id) {
+        setProjectorModelId(fullProjector.projectorModel.id);
+      }
+
       // Fetch parts for this projector model
-      if (projector.modelNo) {
-        await loadPartsForModel(projector.modelNo);
+      if (projectorInfo.modelNo) {
+        await loadPartsForModel(projectorInfo.modelNo);
       }
     } else {
       setFormData(prev => ({ ...prev, audiNo, audiId, productName: '', serialNumber: '' }));
       setAvailableParts([]);
+      setSelectedPartId('');
+      setProjectorModelId('');
     }
   };
 
@@ -125,12 +161,18 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
       const result = await partsService.getPartsByProjectorModel(modelNo);
       if (result.success && result.data) {
         setAvailableParts(result.data.parts);
+        // Reset selected part if it's no longer in the new list
+        if (selectedPartId && !result.data.parts.find(p => p.id === selectedPartId)) {
+          setSelectedPartId('');
+        }
       } else {
         setAvailableParts([]);
+        setSelectedPartId('');
       }
     } catch (error) {
       console.error('Error loading parts:', error);
       setAvailableParts([]);
+      setSelectedPartId('');
     } finally {
       setLoadingParts(false);
     }
@@ -139,6 +181,7 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
   // Handle part selection from dropdown
   const handlePartSelect = (partId: string) => {
     if (partId === 'custom') {
+      setSelectedPartId('');
       setUseCustomPart(true);
       setFormData(prev => ({
         ...prev,
@@ -146,6 +189,7 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
         defectivePartNumber: '',
       }));
     } else {
+      setSelectedPartId(partId);
       const selectedPart = availableParts.find(p => p.id === partId);
       if (selectedPart) {
         setUseCustomPart(false);
@@ -158,8 +202,44 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // If custom part is used, check if it exists and create it if needed
+    if (useCustomPart && formData.defectivePartName && formData.defectivePartNumber && projectorModelId) {
+      try {
+        // Check if part already exists for this model
+        const existingPart = availableParts.find(
+          p => p.partNumber.toLowerCase() === formData.defectivePartNumber.toLowerCase()
+        );
+
+        if (!existingPart) {
+          // Part doesn't exist, create it
+          const createResult = await partsService.createPart({
+            partName: formData.defectivePartName,
+            partNumber: formData.defectivePartNumber,
+            projectorModelId: projectorModelId,
+            category: 'Custom', // Default category for custom parts
+            description: `Custom part added from RMA form`,
+          });
+
+          if (createResult.success) {
+            // Reload parts list to include the new part
+            const projector = getProjectorByAudi(selectedSite, formData.audiNo);
+            if (projector?.modelNo) {
+              await loadPartsForModel(projector.modelNo);
+            }
+            console.log('Custom part added successfully:', createResult.data?.part);
+          } else {
+            console.warn('Failed to create custom part:', createResult.message);
+            // Continue with form submission even if part creation fails
+          }
+        }
+      } catch (error) {
+        console.error('Error creating custom part:', error);
+        // Continue with form submission even if part creation fails
+      }
+    }
     
     const newCase = {
       ...formData,
@@ -183,6 +263,17 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
           {/* Basic Information */}
           <div className="md:col-span-2">
             <h3 className="text-gray-900 mb-4">Basic Information</h3>
+          </div>
+
+          {/* Template Selector */}
+          <div className="md:col-span-2">
+            <label className="block text-sm text-gray-700 mb-2">
+              Use Template (Optional)
+            </label>
+            <TemplateSelector
+              caseType="RMA"
+              onSelectTemplate={handleTemplateSelect}
+            />
           </div>
 
           <div>
@@ -294,24 +385,23 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
             <label className="block text-sm text-gray-700 mb-2">
               Site Name <span className="text-red-500">*</span>
             </label>
-            <select
+            <SearchableSelect
+              options={sites.map(site => ({
+                value: site.siteName,
+                label: site.siteName,
+                id: site.id,
+              }))}
               value={selectedSite}
-              onChange={(e) => {
-                const siteName = e.target.value;
+              onChange={(siteName, option) => {
                 const site = sites.find(s => s.siteName === siteName);
                 setSelectedSite(siteName);
                 setSelectedSiteId(site?.id || '');
               }}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Select Site"
+              searchPlaceholder="Search sites..."
+              emptyMessage="No sites found"
               required
-            >
-              <option value="">Select Site</option>
-              {sites.map(site => (
-                <option key={site.id} value={site.siteName}>
-                  {site.siteName}
-                </option>
-              ))}
-            </select>
+            />
           </div>
 
           <div>
@@ -421,19 +511,24 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
               <label className="block text-sm text-gray-700 mb-2">
                 Select Defective Part {loadingParts && <span className="text-gray-400">(Loading...)</span>}
               </label>
-              <select
-                onChange={(e) => handlePartSelect(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Choose from available parts...</option>
-                {availableParts.map((part) => (
-                  <option key={part.id} value={part.id}>
-                    {part.partName} ({part.partNumber})
-                    {part.category && ` - ${part.category}`}
-                  </option>
-                ))}
-                <option value="custom">⚙️ Custom/Other (Enter manually)</option>
-              </select>
+              <SearchableSelect
+                options={[
+                  ...availableParts.map((part) => ({
+                    value: part.id,
+                    label: `${part.partName} (${part.partNumber})${part.category ? ` - ${part.category}` : ''}`,
+                    part: part,
+                  })),
+                  {
+                    value: 'custom',
+                    label: '⚙️ Custom/Other (Enter manually)',
+                  },
+                ]}
+                value={selectedPartId}
+                onChange={(partId) => handlePartSelect(partId)}
+                placeholder="Choose from available parts..."
+                searchPlaceholder="Search parts..."
+                emptyMessage="No parts found"
+              />
               {formData.defectivePartName && (
                 <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
                   <p className="text-sm text-green-800">
@@ -444,7 +539,10 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
                   </p>
                   <button
                     type="button"
-                    onClick={() => setUseCustomPart(true)}
+                    onClick={() => {
+                      setSelectedPartId('');
+                      setUseCustomPart(true);
+                    }}
                     className="text-xs text-blue-600 hover:text-blue-800 mt-1"
                   >
                     Switch to custom entry
@@ -460,7 +558,10 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
                   {availableParts.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setUseCustomPart(false)}
+                      onClick={() => {
+                        setSelectedPartId('');
+                        setUseCustomPart(false);
+                      }}
                       className="ml-2 text-xs text-blue-600 hover:text-blue-800"
                     >
                       (Select from list instead)
@@ -742,6 +843,25 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit }: RMAFo
             />
           </div>
         </div>
+
+        {/* File Attachments - Only show for existing cases */}
+        {caseId && (
+          <div className="md:col-span-2 space-y-4 pt-4 border-t border-gray-200">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Attachments
+              </label>
+              <FileUpload
+                caseId={caseId}
+                caseType="RMA"
+                onUploadComplete={() => setRefreshAttachments(prev => prev + 1)}
+              />
+            </div>
+            <div>
+              <AttachmentList key={refreshAttachments} caseId={caseId} caseType="RMA" />
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
           <button

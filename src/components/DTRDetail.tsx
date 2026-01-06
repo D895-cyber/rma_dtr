@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { X, Edit, Check, AlertCircle, ArrowRight, History } from 'lucide-react';
 import { DTRCase, useUsersAPI, useRMACases, useDTRCases } from '../hooks/useAPI';
 import { dtrService } from '../services/dtr.service';
+import { FileUpload } from './FileUpload';
+import { AttachmentList } from './AttachmentList';
 
 interface DTRDetailProps {
   dtr: DTRCase;
@@ -66,6 +68,7 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
   
   const [isEditing, setIsEditing] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
+  const [refreshAttachments, setRefreshAttachments] = useState(0);
   
   // Helper to get assignedTo email from UUID or email
   const getAssignedToEmail = (assignedTo: string | null | undefined): string => {
@@ -473,6 +476,19 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
               </button>
             </div>
           )}
+
+          {/* File Attachments Section */}
+          <div className="bg-white rounded-lg border border-gray-200 p-6 mt-6">
+            <h3 className="text-gray-900 mb-4">Attachments</h3>
+            <div className="space-y-4">
+              <FileUpload
+                caseId={dtr.id}
+                caseType="DTR"
+                onUploadComplete={() => setRefreshAttachments(prev => prev + 1)}
+              />
+              <AttachmentList key={refreshAttachments} caseId={dtr.id} caseType="DTR" />
+            </div>
+          </div>
         </div>
       </div>
     </div>

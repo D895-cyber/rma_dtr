@@ -88,6 +88,9 @@ In your Vercel project dashboard:
 | `NODE_ENV` | Environment | `production` |
 | `FRONTEND_URL` | Your Vercel app URL | `https://your-app.vercel.app` |
 | `VITE_API_URL` | API endpoint (for frontend) | `https://your-app.vercel.app/api` |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name | `your_cloud_name` |
+| `CLOUDINARY_API_KEY` | Cloudinary API key | `your_api_key` |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret | `your_api_secret` |
 
 ### Environment Variable Setup
 
@@ -98,6 +101,9 @@ DATABASE_URL=postgresql://user:password@host:5432/database
 JWT_SECRET=your-generated-secret-key-32-characters-minimum
 JWT_EXPIRES_IN=7d
 NODE_ENV=production
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
 FRONTEND_URL=https://your-app.vercel.app
 VITE_API_URL=https://your-app.vercel.app/api
 ```

@@ -2,7 +2,9 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/response.util';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../utils/prisma.util';
-import { sendAssignmentEmail } from '../utils/email.util';
+import { sendAssignmentEmail, sendStatusChangeEmail, sendOverdueCaseEmail } from '../utils/email.util';
+import { findMatchingRule, getAssignedUser } from '../utils/assignmentRule.util';
+import { getNotificationPreferencesForUser } from './notificationPreference.controller';
 
 // Get all DTR cases with filters
 export async function getAllDtrCases(req: AuthRequest, res: Response) {
@@ -171,7 +173,7 @@ export async function createDtrCase(req: AuthRequest, res: Response) {
       return sendError(res, 'Missing required fields', 400);
     }
 
-    // Handle assignedTo: convert email to user ID if needed
+    // Handle assignedTo: convert email to user ID if needed, or use auto-assignment
     let assignedToUserId: string | null = null;
     if (assignedTo) {
       // Check if assignedTo is an email or user ID
@@ -190,6 +192,25 @@ export async function createDtrCase(req: AuthRequest, res: Response) {
       } else {
         // It's already a user ID
         assignedToUserId = assignedTo;
+      }
+    } else {
+      // Auto-assignment: Try to find matching rule
+      try {
+        const rule = await findMatchingRule('DTR', {
+          siteId,
+          caseSeverity: caseSeverity || 'medium',
+        });
+        
+        if (rule) {
+          const autoAssignedUserId = await getAssignedUser(rule);
+          if (autoAssignedUserId) {
+            assignedToUserId = autoAssignedUserId;
+            console.log(`[Auto-Assignment] DTR case ${caseNumber} auto-assigned to user ${autoAssignedUserId} via rule ${rule.name}`);
+          }
+        }
+      } catch (error) {
+        console.error('[Auto-Assignment] Error during auto-assignment:', error);
+        // Continue without auto-assignment if it fails
       }
     }
 
@@ -239,25 +260,32 @@ export async function createDtrCase(req: AuthRequest, res: Response) {
 
     // Send notification + email if assigned
     if (assignedToUserId && dtrCase.assignee?.email) {
-      await prisma.notification.create({
-        data: {
-          userId: assignedToUserId,
-          title: 'New DTR Case Assigned',
-          message: `You have been assigned to DTR Case #${caseNumber}`,
-          type: 'assignment',
-          caseId: dtrCase.id,
-          caseType: 'DTR',
-        },
-      });
+      const prefs = await getNotificationPreferencesForUser(assignedToUserId);
+      
+      // In-app notification
+      if (prefs.inAppCaseAssigned) {
+        await prisma.notification.create({
+          data: {
+            userId: assignedToUserId,
+            title: 'New DTR Case Assigned',
+            message: `You have been assigned to DTR Case #${caseNumber}`,
+            type: 'assignment',
+            caseId: dtrCase.id,
+            caseType: 'DTR',
+          },
+        });
+      }
 
-      // Fire-and-forget email; log but don't fail the request
-      sendAssignmentEmail({
-        to: dtrCase.assignee.email,
-        engineerName: dtrCase.assignee.name,
-        caseType: 'DTR',
-        caseNumber: dtrCase.caseNumber,
-        createdBy: dtrCase.creator?.email,
-      }).catch((err) => console.error('DTR assignment email error:', err));
+      // Email notification
+      if (prefs.emailCaseAssigned) {
+        sendAssignmentEmail({
+          to: dtrCase.assignee.email,
+          engineerName: dtrCase.assignee.name,
+          caseType: 'DTR',
+          caseNumber: dtrCase.caseNumber,
+          createdBy: dtrCase.creator?.email,
+        }).catch((err) => console.error('DTR assignment email error:', err));
+      }
     }
 
     return sendSuccess(res, { case: dtrCase }, 'DTR case created successfully', 201);
@@ -273,15 +301,22 @@ export async function updateDtrCase(req: AuthRequest, res: Response) {
     const { id } = req.params;
     const updateData = { ...req.body };
 
-    // Get the current case to check for assignment changes
+    // Get the current case to check for assignment and status changes
     const currentCase = await prisma.dtrCase.findUnique({
       where: { id },
-      select: { assignedTo: true, caseNumber: true },
+      include: {
+        assignee: {
+          select: { id: true, name: true, email: true },
+        },
+      },
     });
 
     if (!currentCase) {
       return sendError(res, 'DTR case not found', 404);
     }
+
+    const oldStatus = currentCase.callStatus;
+    const newStatus = updateData.callStatus;
 
     // Remove fields that shouldn't be updated directly
     delete updateData.id;
@@ -353,24 +388,61 @@ export async function updateDtrCase(req: AuthRequest, res: Response) {
 
     // Send notification + email if assignedTo changed
     if (updateData.assignedTo && updateData.assignedTo !== currentCase.assignedTo && dtrCase.assignee?.email) {
-      await prisma.notification.create({
-        data: {
-          userId: updateData.assignedTo,
-          title: 'DTR Case Assigned',
-          message: `You have been assigned to DTR Case #${dtrCase.caseNumber}`,
-          type: 'assignment',
-          caseId: dtrCase.id,
-          caseType: 'DTR',
-        },
-      });
+      const prefs = await getNotificationPreferencesForUser(updateData.assignedTo);
+      
+      if (prefs.inAppCaseAssigned) {
+        await prisma.notification.create({
+          data: {
+            userId: updateData.assignedTo,
+            title: 'DTR Case Assigned',
+            message: `You have been assigned to DTR Case #${dtrCase.caseNumber}`,
+            type: 'assignment',
+            caseId: dtrCase.id,
+            caseType: 'DTR',
+          },
+        });
+      }
 
-      sendAssignmentEmail({
-        to: dtrCase.assignee.email,
-        engineerName: dtrCase.assignee.name,
-        caseType: 'DTR',
-        caseNumber: dtrCase.caseNumber,
-        createdBy: dtrCase.creator?.email,
-      }).catch((err) => console.error('DTR reassignment email error:', err));
+      if (prefs.emailCaseAssigned) {
+        sendAssignmentEmail({
+          to: dtrCase.assignee.email,
+          engineerName: dtrCase.assignee.name,
+          caseType: 'DTR',
+          caseNumber: dtrCase.caseNumber,
+          createdBy: dtrCase.creator?.email,
+        }).catch((err) => console.error('DTR reassignment email error:', err));
+      }
+    }
+
+    // Send notification + email if status changed
+    if (newStatus && oldStatus !== newStatus && dtrCase.assignee) {
+      const prefs = await getNotificationPreferencesForUser(dtrCase.assignee.id);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      
+      if (prefs.inAppStatusChanged) {
+        await prisma.notification.create({
+          data: {
+            userId: dtrCase.assignee.id,
+            title: 'DTR Case Status Changed',
+            message: `DTR Case #${dtrCase.caseNumber} status changed from ${oldStatus} to ${newStatus}`,
+            type: 'status_change',
+            caseId: dtrCase.id,
+            caseType: 'DTR',
+          },
+        });
+      }
+
+      if (prefs.emailStatusChanged && dtrCase.assignee.email) {
+        sendStatusChangeEmail({
+          to: dtrCase.assignee.email,
+          userName: dtrCase.assignee.name,
+          caseType: 'DTR',
+          caseNumber: dtrCase.caseNumber,
+          oldStatus,
+          newStatus,
+          link: `${frontendUrl}/#dtr`,
+        }).catch((err) => console.error('DTR status change email error:', err));
+      }
     }
 
     return sendSuccess(res, { case: dtrCase }, 'DTR case updated successfully');

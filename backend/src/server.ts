@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import compression from 'compression';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
 
 // Import routes
 import authRoutes from './routes/auth.routes';
@@ -15,6 +16,11 @@ import dtrRoutes from './routes/dtr.routes';
 import rmaRoutes from './routes/rma.routes';
 import notificationRoutes from './routes/notification.routes';
 import analyticsRoutes from './routes/analytics.routes';
+import notificationPreferenceRoutes from './routes/notificationPreference.routes';
+import templateRoutes from './routes/template.routes';
+import searchRoutes from './routes/search.routes';
+import ruleRoutes from './routes/rule.routes';
+import attachmentRoutes from './routes/attachment.routes';
 
 // Import middleware
 import { errorHandler } from './middleware/error.middleware';
@@ -61,6 +67,9 @@ app.use('/api/', limiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Compression
 app.use(compression());
 
@@ -86,6 +95,11 @@ app.use('/api/parts', partsRoutes);
 app.use('/api/dtr', dtrRoutes);
 app.use('/api/rma', rmaRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/notification-preferences', notificationPreferenceRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/searches', searchRoutes);
+app.use('/api/rules', ruleRoutes);
+app.use('/api/attachments', attachmentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
 // 404 handler

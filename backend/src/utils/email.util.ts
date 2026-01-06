@@ -149,4 +149,210 @@ export async function sendRmaClientEmail(payload: RmaClientEmailPayload) {
   });
 }
 
+// ============================================
+// SMART NOTIFICATIONS
+// ============================================
+
+export interface StatusChangeEmailPayload {
+  to: string;
+  userName?: string | null;
+  caseType: 'DTR' | 'RMA';
+  caseNumber: string;
+  oldStatus: string;
+  newStatus: string;
+  link?: string;
+}
+
+export async function sendStatusChangeEmail(payload: StatusChangeEmailPayload) {
+  if (!emailEnabled || !transporter) {
+    console.warn('[Email] Status change email not sent: Gmail OAuth2 env vars not configured');
+    return;
+  }
+
+  if (!payload.to || !payload.to.includes('@')) {
+    console.error(`[Email] Invalid email address: ${payload.to}`);
+    return;
+  }
+
+  try {
+    const subject = `[${payload.caseType}] Status Changed - #${payload.caseNumber}`;
+    const greetingName = payload.userName || 'User';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    const textLines = [
+      `Hi ${greetingName},`,
+      '',
+      `The status of ${payload.caseType} case #${payload.caseNumber} has been updated.`,
+      `Previous Status: ${payload.oldStatus}`,
+      `New Status: ${payload.newStatus}`,
+      '',
+      payload.link ? `View Case: ${payload.link}` : `View Case: ${frontendUrl}/#${payload.caseType.toLowerCase()}`,
+    ].filter(Boolean);
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2>Case Status Changed</h2>
+        <p>Hi ${greetingName},</p>
+        <p>The status of <strong>${payload.caseType}</strong> case <strong>#${payload.caseNumber}</strong> has been updated.</p>
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          <tr>
+            <td style="padding: 8px; background-color: #f5f5f5;"><strong>Previous Status:</strong></td>
+            <td style="padding: 8px;">${payload.oldStatus}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; background-color: #f5f5f5;"><strong>New Status:</strong></td>
+            <td style="padding: 8px;"><strong>${payload.newStatus}</strong></td>
+          </tr>
+        </table>
+        <p><a href="${payload.link || `${frontendUrl}/#${payload.caseType.toLowerCase()}`}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">View Case</a></p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"CRM" <${GMAIL_OAUTH_USER}>`,
+      to: payload.to,
+      subject,
+      text: textLines.join('\n'),
+      html,
+    });
+
+    console.log(`[Email] Status change email sent to ${payload.to}`);
+  } catch (error: any) {
+    console.error(`[Email] Failed to send status change email:`, error);
+  }
+}
+
+export interface OverdueCaseEmailPayload {
+  to: string;
+  userName?: string | null;
+  caseType: 'DTR' | 'RMA';
+  caseNumber: string;
+  daysOverdue: number;
+  link?: string;
+}
+
+export async function sendOverdueCaseEmail(payload: OverdueCaseEmailPayload) {
+  if (!emailEnabled || !transporter) {
+    console.warn('[Email] Overdue case email not sent: Gmail OAuth2 env vars not configured');
+    return;
+  }
+
+  if (!payload.to || !payload.to.includes('@')) {
+    console.error(`[Email] Invalid email address: ${payload.to}`);
+    return;
+  }
+
+  try {
+    const subject = `[${payload.caseType}] Overdue Case Alert - #${payload.caseNumber}`;
+    const greetingName = payload.userName || 'User';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    const textLines = [
+      `Hi ${greetingName},`,
+      '',
+      `⚠️ ALERT: ${payload.caseType} case #${payload.caseNumber} is ${payload.daysOverdue} day(s) overdue.`,
+      '',
+      'Please take immediate action to resolve this case.',
+      '',
+      payload.link ? `View Case: ${payload.link}` : `View Case: ${frontendUrl}/#${payload.caseType.toLowerCase()}`,
+    ].filter(Boolean);
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #dc3545;">⚠️ Overdue Case Alert</h2>
+        <p>Hi ${greetingName},</p>
+        <p style="background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
+          <strong>${payload.caseType}</strong> case <strong>#${payload.caseNumber}</strong> is <strong>${payload.daysOverdue} day(s) overdue</strong>.
+        </p>
+        <p>Please take immediate action to resolve this case.</p>
+        <p><a href="${payload.link || `${frontendUrl}/#${payload.caseType.toLowerCase()}`}" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">View Case</a></p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"CRM" <${GMAIL_OAUTH_USER}>`,
+      to: payload.to,
+      subject,
+      text: textLines.join('\n'),
+      html,
+    });
+
+    console.log(`[Email] Overdue case email sent to ${payload.to}`);
+  } catch (error: any) {
+    console.error(`[Email] Failed to send overdue case email:`, error);
+  }
+}
+
+export interface EscalationEmailPayload {
+  to: string;
+  userName?: string | null;
+  caseType: 'DTR' | 'RMA';
+  caseNumber: string;
+  escalatedFrom: string;
+  escalatedTo: string;
+  reason?: string;
+  link?: string;
+}
+
+export async function sendEscalationEmail(payload: EscalationEmailPayload) {
+  if (!emailEnabled || !transporter) {
+    console.warn('[Email] Escalation email not sent: Gmail OAuth2 env vars not configured');
+    return;
+  }
+
+  if (!payload.to || !payload.to.includes('@')) {
+    console.error(`[Email] Invalid email address: ${payload.to}`);
+    return;
+  }
+
+  try {
+    const subject = `[${payload.caseType}] Case Escalated - #${payload.caseNumber}`;
+    const greetingName = payload.userName || 'User';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    const textLines = [
+      `Hi ${greetingName},`,
+      '',
+      `${payload.caseType} case #${payload.caseNumber} has been escalated.`,
+      `Escalated from: ${payload.escalatedFrom}`,
+      `Escalated to: ${payload.escalatedTo}`,
+      payload.reason ? `Reason: ${payload.reason}` : '',
+      '',
+      payload.link ? `View Case: ${payload.link}` : `View Case: ${frontendUrl}/#${payload.caseType.toLowerCase()}`,
+    ].filter(Boolean);
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #ff9800;">Case Escalated</h2>
+        <p>Hi ${greetingName},</p>
+        <p><strong>${payload.caseType}</strong> case <strong>#${payload.caseNumber}</strong> has been escalated.</p>
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          <tr>
+            <td style="padding: 8px; background-color: #f5f5f5;"><strong>Escalated from:</strong></td>
+            <td style="padding: 8px;">${payload.escalatedFrom}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; background-color: #f5f5f5;"><strong>Escalated to:</strong></td>
+            <td style="padding: 8px;"><strong>${payload.escalatedTo}</strong></td>
+          </tr>
+          ${payload.reason ? `<tr><td style="padding: 8px; background-color: #f5f5f5;"><strong>Reason:</strong></td><td style="padding: 8px;">${payload.reason}</td></tr>` : ''}
+        </table>
+        <p><a href="${payload.link || `${frontendUrl}/#${payload.caseType.toLowerCase()}`}" style="background-color: #ff9800; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">View Case</a></p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"CRM" <${GMAIL_OAUTH_USER}>`,
+      to: payload.to,
+      subject,
+      text: textLines.join('\n'),
+      html,
+    });
+
+    console.log(`[Email] Escalation email sent to ${payload.to}`);
+  } catch (error: any) {
+    console.error(`[Email] Failed to send escalation email:`, error);
+  }
+}
+
 

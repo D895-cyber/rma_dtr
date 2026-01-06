@@ -16,8 +16,8 @@ const getApiBaseUrl = () => {
     }
   }
   
-  // Default to local development
-  return 'http://localhost:5000/api';
+  // Default to local development (backend runs on 5002)
+  return 'http://localhost:5002/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();

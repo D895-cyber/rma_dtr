@@ -1,10 +1,12 @@
 import api from './api';
 
 // Get API base URL (without /api suffix for direct fetch calls)
+// This should match the logic in api.ts for consistency
 const getApiUrl = () => {
+  // Use environment variable if set
   if (import.meta.env.VITE_API_URL) {
-    // If VITE_API_URL includes /api, remove it for base URL
     const url = import.meta.env.VITE_API_URL;
+    // If VITE_API_URL includes /api, remove it for base URL
     return url.endsWith('/api') ? url.slice(0, -4) : url;
   }
   
@@ -12,7 +14,7 @@ const getApiUrl = () => {
   if (typeof window !== 'undefined') {
     const origin = window.location.origin;
     // If deployed (not localhost), use same origin
-    if (!origin.includes('localhost')) {
+    if (origin.includes('vercel.app') || !origin.includes('localhost')) {
       return origin;
     }
   }
@@ -22,6 +24,11 @@ const getApiUrl = () => {
 };
 
 const API_BASE = getApiUrl();
+
+// Debug logging in development
+if (process.env.NODE_ENV === 'development') {
+  console.log('🔗 Attachment Service API Base URL:', API_BASE);
+}
 
 export interface CaseAttachment {
   id: string;
@@ -60,17 +67,51 @@ export const attachmentService = {
     }
 
     const token = localStorage.getItem('auth_token');
-    const response = await fetch(`${API_BASE}/api/attachments/upload`, {
+    
+    // Construct full URL - use same logic as api.ts
+    let uploadUrl: string;
+    if (import.meta.env.VITE_API_URL) {
+      uploadUrl = `${import.meta.env.VITE_API_URL}/attachments/upload`;
+    } else if (typeof window !== 'undefined') {
+      const origin = window.location.origin;
+      if (origin.includes('vercel.app') || !origin.includes('localhost')) {
+        uploadUrl = `${origin}/api/attachments/upload`;
+      } else {
+        uploadUrl = 'http://localhost:5002/api/attachments/upload';
+      }
+    } else {
+      uploadUrl = 'http://localhost:5002/api/attachments/upload';
+    }
+    
+    // Debug logging
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📤 Upload URL:', uploadUrl);
+      console.log('📤 API_BASE:', API_BASE);
+      console.log('📤 VITE_API_URL:', import.meta.env.VITE_API_URL);
+    }
+    
+    const response = await fetch(uploadUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
+        // Don't set Content-Type - browser will set it with boundary for FormData
       },
       body: formData,
     });
 
-    const data = await response.json();
+    // Handle non-JSON responses
+    let data: any;
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      throw new Error(`Upload failed: ${response.status} ${response.statusText} - ${text}`);
+    }
+    
     if (!response.ok) {
-      throw new Error(data.message || 'Failed to upload file');
+      console.error('Upload error response:', data);
+      throw new Error(data.message || data.error || `Failed to upload file: ${response.status} ${response.statusText}`);
     }
     return data;
   },

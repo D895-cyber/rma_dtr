@@ -24,6 +24,11 @@ import dtrRoutes from '../backend/dist/routes/dtr.routes';
 import rmaRoutes from '../backend/dist/routes/rma.routes';
 import notificationRoutes from '../backend/dist/routes/notification.routes';
 import analyticsRoutes from '../backend/dist/routes/analytics.routes';
+import attachmentRoutes from '../backend/dist/routes/attachment.routes';
+import notificationPreferenceRoutes from '../backend/dist/routes/notificationPreference.routes';
+import templateRoutes from '../backend/dist/routes/template.routes';
+import searchRoutes from '../backend/dist/routes/search.routes';
+import ruleRoutes from '../backend/dist/routes/rule.routes';
 
 // Import middleware
 import { errorHandler } from '../backend/dist/middleware/error.middleware';
@@ -81,9 +86,9 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Body parsing - Increased limit for file uploads
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Compression
 app.use(compression());
@@ -118,6 +123,11 @@ app.use('/api/parts', partsRoutes);
 app.use('/api/dtr', dtrRoutes);
 app.use('/api/rma', rmaRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/notification-preferences', notificationPreferenceRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/searches', searchRoutes);
+app.use('/api/rules', ruleRoutes);
+app.use('/api/attachments', attachmentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
 // 404 handler

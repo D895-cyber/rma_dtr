@@ -60,3 +60,4 @@ For more details, see [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md).
 - **Backend**: Node.js, Express, TypeScript, Prisma
 - **Database**: PostgreSQL
 - **Deployment**: Vercel (Serverless Functions)
+# Force Vercel redeploy - Tue Jan  6 23:56:59 IST 2026

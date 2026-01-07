@@ -139,16 +139,17 @@ export function SearchableSelect({
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
-      {/* Trigger Button */}
-      <button
-        type="button"
+      {/* Trigger "button" (div for proper DOM nesting) */}
+      <div
+        role="button"
+        tabIndex={disabled ? -1 : 0}
         onClick={() => !disabled && setIsOpen(!isOpen)}
-        disabled={disabled}
         onKeyDown={handleKeyDown}
+        aria-disabled={disabled}
         className={`
           w-full px-4 py-2 border border-gray-300 rounded-lg 
           focus:outline-none focus:ring-2 focus:ring-blue-500
-          disabled:bg-gray-100 disabled:cursor-not-allowed
+          ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}
           flex items-center justify-between
           ${isOpen ? 'ring-2 ring-blue-500 border-blue-500' : ''}
         `}
@@ -158,19 +159,18 @@ export function SearchableSelect({
         </span>
         <div className="flex items-center gap-2">
           {value && !disabled && (
-            <button
-              type="button"
+            <span
               onClick={handleClear}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-gray-400 hover:text-gray-600 cursor-pointer"
             >
               <X className="w-4 h-4" />
-            </button>
+            </span>
           )}
           <ChevronDown 
             className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} 
           />
         </div>
-      </button>
+      </div>
 
       {/* Dropdown */}
       {isOpen && (

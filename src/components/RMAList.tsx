@@ -23,6 +23,7 @@ export function RMAList({ currentUser }: RMAListProps) {
   const [yearFilter, setYearFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [dnrFilter, setDnrFilter] = useState<boolean>(false); // Filter for DNR (Do Not Return) cases
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [allRMACases, setAllRMACases] = useState<any[]>([]);
@@ -238,21 +239,33 @@ export function RMAList({ currentUser }: RMAListProps) {
   );
   availableYears.sort((a, b) => b - a);
 
-  // Check if any filters are active (search, status, type, date range, year, age)
+  // Check if any filters are active (search, status, type, date range, year, age, dnr)
   const hasActiveFilters = debouncedSearchTerm || 
     statusFilter !== 'all' || 
     typeFilter !== 'all' || 
     dateFrom || 
     dateTo || 
     yearFilter !== 'all' || 
-    ageFilter !== 'all';
+    ageFilter !== 'all' ||
+    dnrFilter;
 
-  // Apply backend filters (status, type, search) - these are applied server-side when loading
+  // Apply backend filters (status, type, search, dnr) - these are applied server-side when loading
   // But since we load all cases, we need to apply them client-side too
   // Only show results if there's a search term or active filters
   const backendFilteredCases = hasActiveFilters ? allRMACases.filter(r => {
-    if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'pending') {
+        // Pending includes both "Yet to Deliver" and "In Transit"
+        if (r.status !== 'rma_raised_yet_to_deliver' && r.status !== 'faulty_in_transit_to_cds') {
+          return false;
+        }
+      } else if (r.status !== statusFilter) {
+        return false;
+      }
+    }
     if (typeFilter !== 'all' && r.rmaType !== typeFilter) return false;
+    // DNR filter - if active, only show cases where isDefectivePartDNR is true
+    if (dnrFilter && !r.isDefectivePartDNR) return false;
     if (debouncedSearchTerm) {
       const search = debouncedSearchTerm.toLowerCase();
       const siteName = getSiteName(r.site || r.siteName);
@@ -287,11 +300,14 @@ export function RMAList({ currentUser }: RMAListProps) {
 
   // Calculate statistics
   const rmaStats = useMemo(() => {
+    const rmaRaised = casesForStats.filter(r => r.status === 'rma_raised_yet_to_deliver').length;
+    const inTransit = casesForStats.filter(r => r.status === 'faulty_in_transit_to_cds').length;
     const stats = {
       total: casesForStats.length,
       open: casesForStats.filter(r => r.status === 'open').length,
-      rmaRaised: casesForStats.filter(r => r.status === 'rma_raised_yet_to_deliver').length,
-      inTransit: casesForStats.filter(r => r.status === 'faulty_in_transit_to_cds').length,
+      rmaRaised,
+      inTransit,
+      pending: rmaRaised + inTransit, // Combined count of Yet to Deliver and In Transit
       closed: casesForStats.filter(r => r.status === 'closed').length,
       cancelled: casesForStats.filter(r => r.status === 'cancelled').length,
       dnr: casesForStats.filter(r => r.isDefectivePartDNR === true).length,
@@ -743,13 +759,13 @@ export function RMAList({ currentUser }: RMAListProps) {
           <p className="text-sm text-gray-600">Return Material Authorization & Part Tracking</p>
         </div>
         <ProtectedComponent permission="rma:create">
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New RMA Case
-        </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New RMA Case
+          </button>
         </ProtectedComponent>
       </div>
 
@@ -763,9 +779,22 @@ export function RMAList({ currentUser }: RMAListProps) {
             </span>
           )}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
           {/* Total */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+          <div 
+            onClick={() => {
+              setStatusFilter('all');
+              setDnrFilter(false);
+              setSearchTerm('');
+              setTypeFilter('all');
+              setAgeFilter('all');
+              setYearFilter('all');
+              setDateFrom('');
+              setDateTo('');
+            }}
+            className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-blue-400"
+            title="Click to show all cases"
+          >
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-gray-600 font-medium">Total</p>
               <Package className="w-4 h-4 text-blue-600" />
@@ -774,7 +803,14 @@ export function RMAList({ currentUser }: RMAListProps) {
           </div>
           
           {/* Open */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+          <div 
+            onClick={() => {
+              setStatusFilter('open');
+              setDnrFilter(false);
+            }}
+            className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-orange-400"
+            title="Click to filter by Open cases"
+          >
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-gray-600 font-medium">Open</p>
               <AlertCircle className="w-4 h-4 text-orange-600" />
@@ -783,8 +819,32 @@ export function RMAList({ currentUser }: RMAListProps) {
             <p className="text-xs text-gray-500 mt-1">{rmaStats.total > 0 ? Math.round((rmaStats.open / rmaStats.total) * 100) : 0}%</p>
           </div>
           
+          {/* Pending - Combined Yet to Deliver and In Transit */}
+          <div 
+            onClick={() => {
+              setStatusFilter('pending');
+              setDnrFilter(false);
+            }}
+            className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-blue-400"
+            title="Click to filter by Pending cases (Yet to Deliver + In Transit)"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-gray-600 font-medium">Pending</p>
+              <Clock className="w-4 h-4 text-blue-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{rmaStats.pending}</p>
+            <p className="text-xs text-gray-500 mt-1">{rmaStats.total > 0 ? Math.round((rmaStats.pending / rmaStats.total) * 100) : 0}%</p>
+          </div>
+          
           {/* RMA Raised */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+          <div 
+            onClick={() => {
+              setStatusFilter('rma_raised_yet_to_deliver');
+              setDnrFilter(false);
+            }}
+            className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-yellow-400"
+            title="Click to filter by Yet to Deliver cases"
+          >
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-gray-600 font-medium">Yet to Deliver</p>
               <Clock className="w-4 h-4 text-yellow-600" />
@@ -794,7 +854,14 @@ export function RMAList({ currentUser }: RMAListProps) {
           </div>
           
           {/* In Transit */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+          <div 
+            onClick={() => {
+              setStatusFilter('faulty_in_transit_to_cds');
+              setDnrFilter(false);
+            }}
+            className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-purple-400"
+            title="Click to filter by In Transit cases"
+          >
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-gray-600 font-medium">In Transit</p>
               <TrendingUp className="w-4 h-4 text-purple-600" />
@@ -804,7 +871,14 @@ export function RMAList({ currentUser }: RMAListProps) {
           </div>
           
           {/* Closed */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+          <div 
+            onClick={() => {
+              setStatusFilter('closed');
+              setDnrFilter(false);
+            }}
+            className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-green-400"
+            title="Click to filter by Closed cases"
+          >
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-gray-600 font-medium">Closed</p>
               <CheckCircle className="w-4 h-4 text-green-600" />
@@ -814,7 +888,14 @@ export function RMAList({ currentUser }: RMAListProps) {
           </div>
           
           {/* Cancelled */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+          <div 
+            onClick={() => {
+              setStatusFilter('cancelled');
+              setDnrFilter(false);
+            }}
+            className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-red-400"
+            title="Click to filter by Cancelled cases"
+          >
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-gray-600 font-medium">Cancelled</p>
               <XCircle className="w-4 h-4 text-red-600" />
@@ -824,7 +905,16 @@ export function RMAList({ currentUser }: RMAListProps) {
           </div>
           
           {/* DNR Cases */}
-          <div className="bg-white rounded-lg border border-red-300 p-4 hover:shadow-md transition-shadow bg-red-50">
+          <div 
+            onClick={() => {
+              setDnrFilter(!dnrFilter);
+              setStatusFilter('all'); // Clear status filter when filtering by DNR
+            }}
+            className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow cursor-pointer bg-red-50 ${
+              dnrFilter ? 'border-red-500 border-2' : 'border-red-300'
+            } hover:border-red-500`}
+            title="Click to filter by DNR (Do Not Return) cases"
+          >
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-red-700 font-medium">DNR Parts</p>
               <Ban className="w-4 h-4 text-red-600" />
@@ -947,6 +1037,7 @@ export function RMAList({ currentUser }: RMAListProps) {
             >
               <option value="all">All Status</option>
               <option value="open">Open</option>
+              <option value="pending">Pending (Yet to Deliver + In Transit)</option>
               <option value="rma_raised_yet_to_deliver">RMA Raised - Yet to Deliver</option>
               <option value="faulty_in_transit_to_cds">Faulty in Transit to CDS</option>
               <option value="closed">Closed</option>
@@ -993,13 +1084,14 @@ export function RMAList({ currentUser }: RMAListProps) {
                 </span>
               )}
             </p>
-            {(dateFrom || dateTo || yearFilter !== 'all' || statusFilter !== 'all' || typeFilter !== 'all' || searchTerm) && (
+            {(dateFrom || dateTo || yearFilter !== 'all' || statusFilter !== 'all' || typeFilter !== 'all' || searchTerm || dnrFilter) && (
               <p className="text-xs text-gray-500 mt-1">
                 Filters: {[
                   dateFrom || dateTo ? `Date: ${dateFrom ? formatDate(dateFrom) : 'Any'} to ${dateTo ? formatDate(dateTo) : 'Any'}` : null,
                   yearFilter !== 'all' ? `Year: ${yearFilter}` : null,
-                  statusFilter !== 'all' ? `Status: ${statusFilter}` : null,
+                  statusFilter !== 'all' ? `Status: ${statusFilter === 'pending' ? 'Pending (Yet to Deliver + In Transit)' : statusFilter}` : null,
                   typeFilter !== 'all' ? `Type: ${typeFilter}` : null,
+                  dnrFilter ? 'DNR (Do Not Return)' : null,
                   searchTerm ? `Search: "${searchTerm}"` : null
                 ].filter(Boolean).join(', ')}
               </p>

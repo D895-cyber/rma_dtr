@@ -6,6 +6,7 @@ import {
   getEngineerPerformance,
   getSiteStats,
   getRmaPartAnalytics,
+  getTopProjectorsByRMA,
 } from '../controllers/analytics.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/role.middleware';
@@ -22,6 +23,7 @@ router.get('/severity-breakdown', requirePermission('analytics:view'), getSeveri
 router.get('/engineer-performance', requirePermission('analytics:view'), getEngineerPerformance);
 router.get('/site-stats', requirePermission('analytics:view'), getSiteStats);
 router.get('/rma-parts', requirePermission('analytics:view'), getRmaPartAnalytics);
+router.get('/top-projectors-rma', requirePermission('analytics:view'), getTopProjectorsByRMA);
 
 export default router;
 

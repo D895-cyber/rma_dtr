@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { AlertTriangle, TrendingUp, Calendar, Download, Filter, X } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Calendar, Download, Filter, X, FileSpreadsheet } from 'lucide-react';
 import { useDTRCases, useRMACases, useUsersAPI } from '../hooks/useAPI';
 import { dtrService } from '../services/dtr.service';
 import { rmaService } from '../services/rma.service';
+import api from '../services/api';
+import * as XLSX from 'xlsx';
 
 interface AnalyticsProps {
   currentUser: any;
@@ -18,7 +20,40 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   const [selectedSite, setSelectedSite] = useState('all');
   const [selectedEngineer, setSelectedEngineer] = useState('all');
   const [timeView, setTimeView] = useState<'monthly' | 'quarterly'>('monthly');
+  const [topProjectors, setTopProjectors] = useState<any[]>([]);
+  const [loadingTopProjectors, setLoadingTopProjectors] = useState(false);
+  const [topProjectorsDateRange, setTopProjectorsDateRange] = useState({ from: '', to: '' });
   
+  // Fetch top 20 projectors by RMA count
+  useEffect(() => {
+    const fetchTopProjectors = async () => {
+      setLoadingTopProjectors(true);
+      try {
+        // Build query parameters
+        const params = new URLSearchParams();
+        if (topProjectorsDateRange.from) {
+          params.append('fromDate', topProjectorsDateRange.from);
+        }
+        if (topProjectorsDateRange.to) {
+          params.append('toDate', topProjectorsDateRange.to);
+        }
+        
+        const queryString = params.toString();
+        const endpoint = `/analytics/top-projectors-rma${queryString ? `?${queryString}` : ''}`;
+        
+        const response = await api.get(endpoint);
+        if (response.success && response.data) {
+          setTopProjectors(response.data.projectors || []);
+        }
+      } catch (error) {
+        console.error('Error fetching top projectors:', error);
+      } finally {
+        setLoadingTopProjectors(false);
+      }
+    };
+    fetchTopProjectors();
+  }, [topProjectorsDateRange.from, topProjectorsDateRange.to]);
+
   // Load ALL cases for analytics by fetching all pages
   useEffect(() => {
     const fetchAllCases = async () => {
@@ -502,6 +537,133 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     { severity: 'Critical', count: dtrCases.filter(d => d.caseSeverity === 'critical').length },
   ];
 
+  // Export top projectors to Excel
+  const exportTopProjectorsToExcel = () => {
+    if (topProjectors.length === 0) {
+      alert('No projector data available to export.');
+      return;
+    }
+
+    try {
+      // Sheet 1: Summary - Top 20 Projectors
+      const summaryData = topProjectors.map((projector) => ({
+        'Rank': projector.rank,
+        'Projector Serial Number': projector.serialNumber,
+        'Model Name': projector.modelName || '-',
+        'Site Name': projector.siteName || '-',
+        'Audi No': projector.audiNo || '-',
+        'RMA Count': projector.rmaCount,
+        'Percentage of Total': `${projector.percentage}%`,
+      }));
+
+      // Sheet 2: Detailed RMA Cases - All parts for top 20 projectors
+      const detailedData: any[] = [];
+      topProjectors.forEach((projector) => {
+        if (projector.rmaCases && projector.rmaCases.length > 0) {
+          projector.rmaCases.forEach((rma: any) => {
+            detailedData.push({
+              'Projector Serial Number': projector.serialNumber,
+              'Model Name': projector.modelName || '-',
+              'Site Name': rma.siteName || '-',
+              'Audi No': rma.audiNo || '-',
+              'RMA Number': rma.rmaNumber || '-',
+              'Call Log Number': rma.callLogNumber || '-',
+              'RMA Order Number': rma.rmaOrderNumber || '-',
+              'RMA Type': rma.rmaType || '-',
+              'RMA Raised Date': rma.rmaRaisedDate ? new Date(rma.rmaRaisedDate).toISOString().split('T')[0] : '-',
+              'Customer Error Date': rma.customerErrorDate ? new Date(rma.customerErrorDate).toISOString().split('T')[0] : '-',
+              'Status': rma.status || '-',
+              'Product Name': rma.productName || '-',
+              'Product Part Number': rma.productPartNumber || '-',
+              'Product Serial Number': rma.serialNumber || '-',
+              'Defective Part Name': rma.defectivePartName || '-',
+              'Defective Part Number': rma.defectivePartNumber || '-',
+              'Defective Part Serial': rma.defectivePartSerial || '-',
+              'Is DNR (Do Not Return)': rma.isDefectivePartDNR ? 'Yes' : 'No',
+              'DNR Reason': rma.defectivePartDNRReason || '-',
+              'Replaced Part Number': rma.replacedPartNumber || '-',
+              'Replaced Part Serial': rma.replacedPartSerial || '-',
+              'Defect Details': rma.defectDetails || '-',
+              'Symptoms': rma.symptoms || '-',
+              'Shipping Carrier': rma.shippingCarrier || '-',
+              'Tracking Number (Outbound)': rma.trackingNumberOut || '-',
+              'Shipped Date': rma.shippedDate ? new Date(rma.shippedDate).toISOString().split('T')[0] : '-',
+              'Return Tracking Number': rma.returnTrackingNumber || '-',
+              'Return Shipped Date': rma.returnShippedDate ? new Date(rma.returnShippedDate).toISOString().split('T')[0] : '-',
+              'Return Shipped Through': rma.returnShippedThrough || '-',
+              'Notes': rma.notes || '-',
+            });
+          });
+        }
+      });
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+
+      // Create Summary sheet
+      const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+      const summaryColWidths = [
+        { wch: 8 },  // Rank
+        { wch: 25 }, // Projector Serial Number
+        { wch: 20 }, // Model Name
+        { wch: 25 }, // Site Name
+        { wch: 15 }, // Audi No
+        { wch: 12 }, // RMA Count
+        { wch: 18 }, // Percentage
+      ];
+      wsSummary['!cols'] = summaryColWidths;
+      XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+
+      // Create Detailed RMA Cases sheet
+      const wsDetails = XLSX.utils.json_to_sheet(detailedData);
+      const detailsColWidths = [
+        { wch: 25 }, // Projector Serial Number
+        { wch: 20 }, // Model Name
+        { wch: 25 }, // Site Name
+        { wch: 15 }, // Audi No
+        { wch: 15 }, // RMA Number
+        { wch: 15 }, // Call Log Number
+        { wch: 15 }, // RMA Order Number
+        { wch: 12 }, // RMA Type
+        { wch: 12 }, // RMA Raised Date
+        { wch: 12 }, // Customer Error Date
+        { wch: 15 }, // Status
+        { wch: 20 }, // Product Name
+        { wch: 18 }, // Product Part Number
+        { wch: 18 }, // Product Serial Number
+        { wch: 20 }, // Defective Part Name
+        { wch: 18 }, // Defective Part Number
+        { wch: 18 }, // Defective Part Serial
+        { wch: 8 },  // Is DNR
+        { wch: 30 }, // DNR Reason
+        { wch: 20 }, // Replaced Part Number
+        { wch: 18 }, // Replaced Part Serial
+        { wch: 30 }, // Defect Details
+        { wch: 30 }, // Symptoms
+        { wch: 15 }, // Shipping Carrier
+        { wch: 20 }, // Tracking Number (Outbound)
+        { wch: 12 }, // Shipped Date
+        { wch: 20 }, // Return Tracking Number
+        { wch: 12 }, // Return Shipped Date
+        { wch: 18 }, // Return Shipped Through
+        { wch: 30 }, // Notes
+      ];
+      wsDetails['!cols'] = detailsColWidths;
+      XLSX.utils.book_append_sheet(wb, wsDetails, 'RMA Details');
+
+      // Generate filename with current date
+      const filename = `top-20-projectors-by-rma-${new Date().toISOString().split('T')[0]}.xlsx`;
+
+      // Write file
+      XLSX.writeFile(wb, filename);
+
+      alert(`Exported top ${topProjectors.length} projectors with ${detailedData.length} RMA cases to Excel successfully!`);
+    } catch (error) {
+      console.error('Export top projectors error:', error);
+      alert('Failed to export to Excel. Please check the console for details.');
+    }
+  };
+
   // Export to Excel (CSV)
   const exportToExcel = () => {
     const csv = [
@@ -949,6 +1111,196 @@ export function Analytics({ currentUser }: AnalyticsProps) {
             <Bar dataKey="count" fill="#6366f1" />
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* Top 20 Projectors by RMA Count */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-gray-900 mb-1">Top 20 Projectors by RMA Count</h3>
+            <p className="text-sm text-gray-600">Projectors with the most RMA cases</p>
+          </div>
+          <button
+            onClick={exportTopProjectorsToExcel}
+            disabled={topProjectors.length === 0 || loadingTopProjectors}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Export to Excel"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Export Excel
+          </button>
+        </div>
+
+        {/* Date Range Filter */}
+        <div className="mb-4 pb-4 border-b border-gray-200">
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="w-4 h-4 text-gray-500" />
+            <label className="text-sm font-medium text-gray-700">Filter by RMA Raised Date</label>
+            {(topProjectorsDateRange.from || topProjectorsDateRange.to) && (
+              <button
+                onClick={() => setTopProjectorsDateRange({ from: '', to: '' })}
+                className="ml-auto flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                title="Clear date range"
+              >
+                <X className="w-3 h-3" />
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">From Date</label>
+              <input
+                type="date"
+                value={topProjectorsDateRange.from}
+                onChange={(e) => {
+                  const from = e.target.value;
+                  setTopProjectorsDateRange(prev => ({
+                    ...prev,
+                    from,
+                    // Clear toDate if it's before fromDate
+                    to: prev.to && from && new Date(prev.to) < new Date(from) ? '' : prev.to
+                  }));
+                }}
+                max={topProjectorsDateRange.to || undefined}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">To Date</label>
+              <input
+                type="date"
+                value={topProjectorsDateRange.to}
+                onChange={(e) => {
+                  const to = e.target.value;
+                  if (to && topProjectorsDateRange.from && new Date(to) < new Date(topProjectorsDateRange.from)) {
+                    alert('To Date must be after or equal to From Date');
+                    return;
+                  }
+                  setTopProjectorsDateRange(prev => ({ ...prev, to }));
+                }}
+                min={topProjectorsDateRange.from || undefined}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {(topProjectorsDateRange.from || topProjectorsDateRange.to) && (
+              <div className="flex items-end">
+                <div className="w-full px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs text-blue-700 font-medium">
+                    Filtering: {topProjectorsDateRange.from || 'Any'} to {topProjectorsDateRange.to || 'Any'}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {loadingTopProjectors ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading projector data...</p>
+            </div>
+          </div>
+        ) : topProjectors.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            <p>No projector data available.</p>
+            <p className="text-sm mt-2">RMAs must be associated with projectors to appear here.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Bar Chart */}
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart 
+                  data={topProjectors.slice().reverse()} 
+                  layout="vertical"
+                  margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" />
+                  <YAxis 
+                    dataKey="serialNumber" 
+                    type="category" 
+                    width={120}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <Tooltip 
+                    formatter={(value: any) => [`${value} RMAs`, 'Count']}
+                    labelFormatter={(label) => `Serial: ${label}`}
+                  />
+                  <Bar dataKey="rmaCount" fill="#3b82f6" radius={[0, 4, 4, 0]}>
+                    {topProjectors.slice().reverse().map((entry, index) => {
+                      const originalIndex = topProjectors.length - 1 - index;
+                      return (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={originalIndex < 3 ? '#ef4444' : originalIndex < 10 ? '#f59e0b' : '#3b82f6'} 
+                        />
+                      );
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Rank</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Serial Number</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Model Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Site Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Audi No</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">RMA Count</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Percentage</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {topProjectors.map((projector, index) => (
+                    <tr 
+                      key={projector.serialNumber} 
+                      className={`hover:bg-gray-50 ${
+                        index < 3 ? 'bg-red-50' : index < 10 ? 'bg-yellow-50' : ''
+                      }`}
+                    >
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold ${
+                          index === 0 ? 'bg-yellow-400 text-yellow-900' :
+                          index === 1 ? 'bg-gray-300 text-gray-700' :
+                          index === 2 ? 'bg-orange-400 text-orange-900' :
+                          'bg-gray-200 text-gray-700'
+                        }`}>
+                          {projector.rank}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">
+                        {projector.serialNumber}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                        {projector.modelName || '-'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                        {projector.siteName || '-'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                        {projector.audiNo || '-'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right font-semibold text-gray-900">
+                        {projector.rmaCount}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right text-gray-600">
+                        {projector.percentage}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

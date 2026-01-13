@@ -532,3 +532,168 @@ export async function getRmaPartAnalytics(req: AuthRequest, res: Response) {
   }
 }
 
+// Get top 20 projectors by RMA count
+export async function getTopProjectorsByRMA(req: AuthRequest, res: Response) {
+  try {
+    const { fromDate, toDate } = req.query;
+    
+    // Build date filter for RMA raised date
+    const dateWhere: any = {
+      audiId: { not: null }, // Only RMAs with associated audi (which links to projector)
+    };
+    
+    if (fromDate || toDate) {
+      dateWhere.rmaRaisedDate = {};
+      if (fromDate) {
+        dateWhere.rmaRaisedDate.gte = new Date(fromDate as string);
+      }
+      if (toDate) {
+        const toDateObj = new Date(toDate as string);
+        toDateObj.setHours(23, 59, 59, 999); // End of day
+        dateWhere.rmaRaisedDate.lte = toDateObj;
+      }
+    }
+    
+    // Get all RMA cases with their audi and projector relations
+    const rmaCases = await prisma.rmaCase.findMany({
+      where: dateWhere,
+      include: {
+        site: {
+          select: {
+            siteName: true,
+          },
+        },
+        audi: {
+          include: {
+            projector: {
+              include: {
+                projectorModel: {
+                  select: {
+                    modelNo: true,
+                    manufacturer: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Group by projector serial number and count RMAs
+    const projectorStats: Record<string, {
+      serialNumber: string;
+      modelName: string | null;
+      rmaCount: number;
+      rmaCases: any[];
+      siteCounts: Record<string, number>; // Track site frequency
+      audiCounts: Record<string, number>; // Track audi frequency
+    }> = {};
+
+    rmaCases.forEach((rma) => {
+      // Type assertion to handle the included relations
+      const rmaWithAudi = rma as any;
+      const projector = rmaWithAudi.audi?.projector;
+      if (!projector || !projector.serialNumber) return;
+
+      const serialNumber = projector.serialNumber;
+      const modelName = projector.projectorModel?.modelNo || null;
+      const siteName = rmaWithAudi.site?.siteName || 'Unknown';
+      const audiNo = rmaWithAudi.audi?.audiNo || 'Unknown';
+      
+      if (!projectorStats[serialNumber]) {
+        projectorStats[serialNumber] = {
+          serialNumber,
+          modelName,
+          rmaCount: 0,
+          rmaCases: [],
+          siteCounts: {},
+          audiCounts: {},
+        };
+      }
+      
+      // Count site and audi occurrences
+      projectorStats[serialNumber].siteCounts[siteName] = (projectorStats[serialNumber].siteCounts[siteName] || 0) + 1;
+      projectorStats[serialNumber].audiCounts[audiNo] = (projectorStats[serialNumber].audiCounts[audiNo] || 0) + 1;
+      
+      projectorStats[serialNumber].rmaCount++;
+      
+      // Store full RMA details for Excel export
+      projectorStats[serialNumber].rmaCases.push({
+        id: rma.id,
+        rmaNumber: rma.rmaNumber,
+        rmaOrderNumber: rma.rmaOrderNumber,
+        callLogNumber: rma.callLogNumber,
+        rmaType: rma.rmaType,
+        rmaRaisedDate: rma.rmaRaisedDate,
+        customerErrorDate: rma.customerErrorDate,
+        status: rma.status,
+        siteName: siteName,
+        audiNo: audiNo,
+        productName: rma.productName,
+        productPartNumber: rma.productPartNumber,
+        serialNumber: rma.serialNumber,
+        defectivePartName: rma.defectivePartName,
+        defectivePartNumber: rma.defectivePartNumber,
+        defectivePartSerial: rma.defectivePartSerial,
+        replacedPartNumber: rma.replacedPartNumber,
+        replacedPartSerial: rma.replacedPartSerial,
+        defectDetails: rma.defectDetails,
+        symptoms: rma.symptoms,
+        shippingCarrier: rma.shippingCarrier,
+        trackingNumberOut: rma.trackingNumberOut,
+        shippedDate: rma.shippedDate,
+        returnTrackingNumber: rma.returnTrackingNumber,
+        returnShippedDate: rma.returnShippedDate,
+        returnShippedThrough: rma.returnShippedThrough,
+        isDefectivePartDNR: rma.isDefectivePartDNR,
+        defectivePartDNRReason: rma.defectivePartDNRReason,
+        notes: rma.notes,
+      });
+    });
+
+    // Convert to array, sort by count, and take top 20
+    const topProjectors = Object.values(projectorStats)
+      .sort((a, b) => b.rmaCount - a.rmaCount)
+      .slice(0, 20)
+      .map((projector, index) => {
+        // Find most common site
+        const mostCommonSite = Object.entries(projector.siteCounts)
+          .sort(([, a], [, b]) => b - a)[0]?.[0] || 'Unknown';
+        
+        // Find most common audi
+        const mostCommonAudi = Object.entries(projector.audiCounts)
+          .sort(([, a], [, b]) => b - a)[0]?.[0] || 'Unknown';
+        
+        return {
+          rank: index + 1,
+          serialNumber: projector.serialNumber,
+          modelName: projector.modelName || 'Unknown',
+          siteName: mostCommonSite,
+          audiNo: mostCommonAudi,
+          rmaCount: projector.rmaCount,
+          rmaCases: projector.rmaCases, // Include full RMA details for Excel export
+        };
+      });
+
+    // Calculate total RMAs for percentage calculation
+    const totalRMAs = rmaCases.length;
+    const topProjectorsWithPercentage = topProjectors.map((projector) => ({
+      ...projector,
+      percentage: totalRMAs > 0 ? Number(((projector.rmaCount / totalRMAs) * 100).toFixed(2)) : 0,
+    }));
+
+    return sendSuccess(res, {
+      projectors: topProjectorsWithPercentage,
+      totalRMAs,
+      summary: {
+        totalProjectorsWithRMA: Object.keys(projectorStats).length,
+        top20Count: topProjectorsWithPercentage.reduce((sum, p) => sum + p.rmaCount, 0),
+      },
+    });
+  } catch (error: any) {
+    console.error('Get top projectors by RMA error:', error);
+    return sendError(res, 'Failed to fetch top projectors by RMA', 500, error.message);
+  }
+}
+

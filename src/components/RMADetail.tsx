@@ -475,8 +475,9 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
             <input
               type="text"
               value={formData.rmaNumber || ''}
-              disabled
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+              onChange={(e) => setFormData({ ...formData, rmaNumber: e.target.value })}
+              disabled={!isEditing}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
             />
           </div>
 
@@ -485,8 +486,9 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
             <input
               type="text"
               value={formData.rmaOrderNumber || ''}
-              disabled
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+              onChange={(e) => setFormData({ ...formData, rmaOrderNumber: e.target.value })}
+              disabled={!isEditing}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
             />
           </div>
 

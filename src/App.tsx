@@ -4,6 +4,7 @@ import { DTRList } from './components/DTRList';
 import { RMAList } from './components/RMAList';
 import { Analytics } from './components/Analytics';
 import { RMAAnalytics } from './components/RMAAnalytics';
+import { RMAAgingAnalytics } from './components/RMAAgingAnalytics';
 import { MasterData } from './components/MasterData';
 import { UserManagement } from './components/UserManagement';
 import { Notifications } from './components/Notifications';
@@ -15,7 +16,18 @@ import { useAuth } from './contexts/AuthContext';
 import { usePermissions } from './hooks/usePermissions';
 import { LayoutDashboard, FileText, Package, BarChart3, Building2, Users, Wrench, Box, LogOut, TrendingUp, FileStack } from 'lucide-react';
 
-type TabId = 'dashboard' | 'dtr' | 'rma' | 'analytics' | 'rma-analytics' | 'masterdata' | 'models' | 'parts' | 'users' | 'templates';
+type TabId =
+  | 'dashboard'
+  | 'dtr'
+  | 'rma'
+  | 'analytics'
+  | 'rma-analytics'
+  | 'rma-aging'
+  | 'masterdata'
+  | 'models'
+  | 'parts'
+  | 'users'
+  | 'templates';
 
 export default function App() {
   // ALL HOOKS MUST BE CALLED AT THE TOP - BEFORE ANY CONDITIONAL RETURNS
@@ -24,7 +36,19 @@ export default function App() {
   // Get initial tab from URL hash, default to 'dashboard'
   const getInitialTab = (): TabId => {
     const hash = window.location.hash.slice(1); // Remove '#'
-    const validTabs: TabId[] = ['dashboard', 'dtr', 'rma', 'analytics', 'rma-analytics', 'masterdata', 'models', 'parts', 'users', 'templates'];
+    const validTabs: TabId[] = [
+      'dashboard',
+      'dtr',
+      'rma',
+      'analytics',
+      'rma-analytics',
+      'rma-aging',
+      'masterdata',
+      'models',
+      'parts',
+      'users',
+      'templates',
+    ];
     return validTabs.includes(hash as TabId) ? (hash as TabId) : 'dashboard';
   };
   
@@ -90,6 +114,7 @@ export default function App() {
     { id: 'rma', label: 'RMA Cases', icon: Package, permission: 'rma:view' as const },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, permission: 'analytics:view' as const },
     { id: 'rma-analytics', label: 'RMA Analytics', icon: TrendingUp, permission: 'analytics:view' as const },
+    { id: 'rma-aging', label: 'RMA Aging', icon: TrendingUp, permission: 'analytics:view' as const },
     { id: 'masterdata', label: 'Master Data', icon: Building2, permission: 'master:view' as const },
     { id: 'models', label: 'Models', icon: Box, permission: 'models:view' as const },
     { id: 'parts', label: 'Parts', icon: Wrench, permission: 'parts:view' as const },
@@ -191,6 +216,7 @@ export default function App() {
         {activeTab === 'rma' && <RMAList currentUser={currentUser} />}
         {activeTab === 'analytics' && <Analytics currentUser={currentUser} />}
         {activeTab === 'rma-analytics' && <RMAAnalytics currentUser={currentUser} />}
+        {activeTab === 'rma-aging' && <RMAAgingAnalytics currentUser={currentUser} />}
         {activeTab === 'masterdata' && <MasterData currentUser={currentUser} />}
         {activeTab === 'models' && <ModelsManagement />}
         {activeTab === 'parts' && <PartsManagement />}

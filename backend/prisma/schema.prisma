@@ -471,3 +471,18 @@ model CaseAttachment {
   @@map("case_attachments")
 }
 
+// ============================================
+// PART NAME ALIASES (for normalization)
+// ============================================
+
+model PartNameAlias {
+  id            String   @id @default(uuid())
+  alias         String   @unique // The variation/alias (e.g., "le", "lightengine")
+  canonicalName String   @map("canonical_name") // The standard name (e.g., "Light Engine")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([canonicalName])
+  @@map("part_name_aliases")
+}
+

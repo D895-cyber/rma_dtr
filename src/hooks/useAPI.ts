@@ -25,14 +25,13 @@ export function useDTRCases() {
     setLoading(true);
     setError(null);
     try {
-      const page = filters?.page || 1;
-      const limit = filters?.limit || 50;
-      const response = await dtrService.getAllDTRCases({ ...filters, page, limit });
+      // Don't pass page/limit unless explicitly provided (removes pagination)
+      const response = await dtrService.getAllDTRCases(filters);
       if (response.success && response.data) {
         setCases(response.data.cases || []);
         setTotal(response.data.total || 0);
         setCurrentPage(response.data.page || 1);
-        setPageLimit(response.data.limit || 50);
+        setPageLimit(response.data.limit || response.data.total || 0);
       } else {
         setError(response.message || 'Failed to load DTR cases');
       }

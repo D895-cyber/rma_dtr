@@ -754,8 +754,10 @@ async function importRMACases(): Promise<ImportStats> {
         replacedPartSerial: row.replacedPartSerial ? String(row.replacedPartSerial).trim() : null,
         symptoms: row.symptoms || null,
         shippingCarrier: row.shippingCarrier ? String(row.shippingCarrier).trim() : null,
-        trackingNumberOut: row.trackingNumberOut ? String(row.trackingNumberOut).trim() : null,
-        returnTrackingNumber: row.returnTrackingNumber ? String(row.returnTrackingNumber).trim() : null,
+        trackingNumberOut: row.trackingNumberOut && row.trackingNumberOut !== '-' && row.trackingNumberOut !== '"-"' 
+          ? String(row.trackingNumberOut).trim() : null,
+        returnTrackingNumber: row.returnTrackingNumber && row.returnTrackingNumber !== '-' && row.returnTrackingNumber !== '"-"' 
+          ? String(row.returnTrackingNumber).trim() : null,
         returnShippedThrough: row.returnShippedThrough || null,
         status: (row.status || 'open').toLowerCase().replace(/\s+/g, '_'),
         createdBy: creator.id,

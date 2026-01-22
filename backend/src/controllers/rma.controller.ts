@@ -286,6 +286,32 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
     return sendSuccess(res, { case: rmaCase }, 'RMA case created successfully', 201);
   } catch (error: any) {
     console.error('Create RMA case error:', error);
+
+    // Handle unique constraint violations (e.g., duplicate RMA number)
+    if (error.code === 'P2002' && error.meta?.target) {
+      const target = Array.isArray(error.meta.target)
+        ? error.meta.target.join(', ')
+        : String(error.meta.target);
+
+      // Specific message for duplicate RMA number
+      if (target.includes('rma_number')) {
+        return sendError(
+          res,
+          'RMA Number already exists. Please enter a unique RMA Number or leave it blank if not applicable.',
+          400,
+          error.message
+        );
+      }
+
+      // Generic unique constraint message
+      return sendError(
+        res,
+        `Duplicate value for unique field(s): ${target}. Please use a different value.`,
+        400,
+        error.message
+      );
+    }
+
     return sendError(res, 'Failed to create RMA case', 500, error.message);
   }
 }

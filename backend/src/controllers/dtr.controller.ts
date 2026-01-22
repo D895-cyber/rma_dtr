@@ -9,7 +9,7 @@ import { getNotificationPreferencesForUser } from './notificationPreference.cont
 // Get all DTR cases with filters
 export async function getAllDtrCases(req: AuthRequest, res: Response) {
   try {
-    const { status, severity, assignedTo, search, page = '1', limit = '50' } = req.query;
+    const { status, severity, assignedTo, search, page, limit } = req.query;
 
     const where: any = {};
 
@@ -26,10 +26,17 @@ export async function getAllDtrCases(req: AuthRequest, res: Response) {
       ];
     }
 
-    // Enforce maximum limit to prevent connection pool exhaustion
-    const maxLimit = 100;
-    const take = Math.min(Number(limit), maxLimit);
-    const skip = (Number(page) - 1) * take;
+    // If no pagination parameters are provided, fetch all cases
+    // Otherwise, apply pagination with a reasonable maximum limit
+    let skip: number | undefined = undefined;
+    let take: number | undefined = undefined;
+    
+    if (page && limit) {
+      const maxLimit = 10000; // High limit to fetch all cases
+      const parsedLimit = Number(limit);
+      take = parsedLimit > 0 ? Math.min(parsedLimit, maxLimit) : maxLimit;
+      skip = (Number(page) - 1) * take;
+    }
 
     const [cases, total] = await Promise.all([
       prisma.dtrCase.findMany({
@@ -56,8 +63,8 @@ export async function getAllDtrCases(req: AuthRequest, res: Response) {
           },
         },
         orderBy: { createdAt: 'desc' },
-        skip,
-        take,
+        ...(skip !== undefined && { skip }),
+        ...(take !== undefined && { take }),
       }),
       prisma.dtrCase.count({ where }),
     ]);
@@ -89,7 +96,12 @@ export async function getAllDtrCases(req: AuthRequest, res: Response) {
       })),
     }));
 
-    return sendSuccess(res, { cases: casesWithAuditLogs, total, page: Number(page), limit: Number(limit) });
+    return sendSuccess(res, { 
+      cases: casesWithAuditLogs, 
+      total, 
+      page: page ? Number(page) : 1, 
+      limit: limit ? Number(limit) : total 
+    });
   } catch (error: any) {
     console.error('Get DTR cases error:', error);
     return sendError(res, 'Failed to fetch DTR cases', 500, error.message);

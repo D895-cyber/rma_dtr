@@ -60,6 +60,46 @@ export interface SiteStats {
   totalCases: number;
 }
 
+export interface RmaAgingRepeatPair {
+  firstCaseId: string;
+  secondCaseId: string;
+  firstRmaNumber?: string | null;
+  secondRmaNumber?: string | null;
+  firstCallLogNumber?: string | null;
+  secondCallLogNumber?: string | null;
+  firstDate: string;
+  secondDate: string;
+  daysBetween: number;
+}
+
+export interface RmaAgingGroup {
+  projectorSerial: string;
+  projectorModel: string | null;
+  siteName: string;
+  partNumber: string | null;
+  partName: string | null;
+  normalizedPartName: string; // The normalized part name used for grouping
+  totalCases: number;
+  repeatPairs: RmaAgingRepeatPair[];
+}
+
+export interface RmaAgingResponse {
+  summary: {
+    totalRmaCases: number;
+    totalGroups: number;
+    groupsWithRepeats: number;
+    totalRepeatPairs: number;
+    thresholdDays: number;
+    minRepeats: number;
+    showOnlyShortest: boolean;
+    dateRange: {
+      from: string | null;
+      to: string | null;
+    };
+  };
+  groups: RmaAgingGroup[];
+}
+
 export const analyticsService = {
   // Get dashboard statistics
   async getDashboardStats() {
@@ -84,6 +124,53 @@ export const analyticsService = {
   // Get site statistics
   async getSiteStats() {
     return await api.get<{ stats: SiteStats[] }>('/analytics/site-stats');
+  },
+
+  // Get RMA aging analytics (repeat RMAs for same part on same projector)
+  async getRmaAging(params?: { 
+    fromDate?: string; 
+    toDate?: string; 
+    thresholdDays?: number; 
+    minRepeats?: number; 
+    showOnlyShortest?: boolean;
+    serialNumbers?: string[];
+    partNames?: string[];
+    siteNames?: string[];
+  }) {
+    const searchParams = new URLSearchParams();
+    if (params?.fromDate) searchParams.append('fromDate', params.fromDate);
+    if (params?.toDate) searchParams.append('toDate', params.toDate);
+    if (params?.thresholdDays !== undefined) searchParams.append('thresholdDays', String(params.thresholdDays));
+    if (params?.minRepeats !== undefined) searchParams.append('minRepeats', String(params.minRepeats));
+    if (params?.showOnlyShortest !== undefined) searchParams.append('showOnlyShortest', String(params.showOnlyShortest));
+    
+    // Add filter arrays (multiple values)
+    if (params?.serialNumbers && params.serialNumbers.length > 0) {
+      params.serialNumbers.forEach(sn => searchParams.append('serialNumbers', sn));
+    }
+    if (params?.partNames && params.partNames.length > 0) {
+      params.partNames.forEach(pn => searchParams.append('partNames', pn));
+    }
+    if (params?.siteNames && params.siteNames.length > 0) {
+      params.siteNames.forEach(sn => searchParams.append('siteNames', sn));
+    }
+
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await api.get<RmaAgingResponse>(`/analytics/rma-aging${query}`);
+  },
+
+  // Get filter options for RMA aging analytics (for autocomplete)
+  async getRmaAgingFilterOptions(params?: { fromDate?: string; toDate?: string }) {
+    const searchParams = new URLSearchParams();
+    if (params?.fromDate) searchParams.append('fromDate', params.fromDate);
+    if (params?.toDate) searchParams.append('toDate', params.toDate);
+
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return await api.get<{
+      serialNumbers: string[];
+      partNames: string[];
+      siteNames: string[];
+    }>(`/analytics/rma-aging/filter-options${query}`);
   },
 };
 

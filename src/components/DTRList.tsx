@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Download, Eye, List, UserCheck, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Plus, Search, Filter, Download, Eye, List, UserCheck, Loader2 } from 'lucide-react';
 import { useDTRCases, useUsersAPI } from '../hooks/useAPI';
 import { DTRForm } from './DTRForm';
 import { DTRDetail } from './DTRDetail';
@@ -11,7 +11,7 @@ interface DTRListProps {
 }
 
 export function DTRList({ currentUser }: DTRListProps) {
-  const { cases: dtrCases, loading, error, total, currentPage, pageLimit, loadCases, createCase, updateCase } = useDTRCases();
+  const { cases: dtrCases, loading, error, total, loadCases, createCase, updateCase } = useDTRCases();
   const { users } = useUsersAPI();
   const { isEngineer } = usePermissions();
   const [showForm, setShowForm] = useState(false);
@@ -20,8 +20,6 @@ export function DTRList({ currentUser }: DTRListProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'all' | 'assigned'>('all'); // For engineers: 'all' or 'assigned'
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
@@ -29,23 +27,23 @@ export function DTRList({ currentUser }: DTRListProps) {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
-      setPage(1); // Reset to first page when search changes
     }, 500);
 
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Reload cases when filters or pagination change
+  // Reload cases when filters change (no pagination)
   useEffect(() => {
     const filters: any = {};
     if (statusFilter !== 'all') filters.status = statusFilter;
     if (severityFilter !== 'all') filters.severity = severityFilter;
     if (debouncedSearchTerm) filters.search = debouncedSearchTerm;
-    loadCases({ ...filters, page, limit }).then(() => {
+    // Fetch all cases without pagination
+    loadCases(filters).then(() => {
       setIsInitialLoad(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, severityFilter, debouncedSearchTerm, page, limit]);
+  }, [statusFilter, severityFilter, debouncedSearchTerm]);
 
   // Helper function to get site name
   const getSiteName = (site: string | { siteName: string } | any): string => {
@@ -318,7 +316,7 @@ export function DTRList({ currentUser }: DTRListProps) {
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-200">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex items-center gap-4">
             <p className="text-sm text-gray-600">
               {isEngineer && viewMode === 'assigned' ? (
                 <>
@@ -326,50 +324,11 @@ export function DTRList({ currentUser }: DTRListProps) {
                   <span className="ml-2 text-blue-600 font-medium">(My Assigned Only)</span>
                 </>
               ) : (
-                <>Showing {filteredCases.length} of {total} total cases (Page {currentPage})</>
+                <>Showing {filteredCases.length} of {total} total cases</>
               )}
             </p>
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Per page:</label>
-              <select
-                value={limit}
-                onChange={(e) => {
-                  setLimit(Number(e.target.value));
-                  setPage(1); // Reset to first page when changing limit
-                }}
-                className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
-            </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Pagination Controls */}
-            {!isEngineer || viewMode === 'all' ? (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1 || loading}
-                  className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Previous page"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-sm text-gray-600">
-                  Page {currentPage} of {Math.ceil(total / limit) || 1}
-                </span>
-                <button
-                  onClick={() => setPage(p => p + 1)}
-                  disabled={currentPage >= Math.ceil(total / limit) || loading}
-                  className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Next page"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            ) : null}
             <button
               onClick={handleExport}
               className="flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors w-full sm:w-auto"

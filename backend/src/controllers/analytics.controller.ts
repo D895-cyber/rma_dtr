@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/response.util';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../utils/prisma.util';
+import { normalizePartName } from '../utils/partName.util';
 
 // Get dashboard statistics
 export async function getDashboardStats(req: AuthRequest, res: Response) {
@@ -694,6 +695,345 @@ export async function getTopProjectorsByRMA(req: AuthRequest, res: Response) {
   } catch (error: any) {
     console.error('Get top projectors by RMA error:', error);
     return sendError(res, 'Failed to fetch top projectors by RMA', 500, error.message);
+  }
+}
+
+// Get RMA aging analytics: repeated RMAs for same part on same projector in short period
+export async function getRmaAgingAnalytics(req: AuthRequest, res: Response) {
+  try {
+    const { 
+      fromDate, 
+      toDate, 
+      thresholdDays = '30', 
+      minRepeats = '2', 
+      showOnlyShortest = 'false',
+      serialNumbers, // Can be string or array
+      partNames, // Can be string or array
+      siteNames, // Can be string or array
+    } = req.query;
+
+    const threshold = Number(thresholdDays) || 30;
+    const minRepeatCount = Number(minRepeats) || 2;
+    // Handle query parameter type (can be string, array, or boolean)
+    const onlyShortest = 
+      (typeof showOnlyShortest === 'string' && showOnlyShortest === 'true') ||
+      (typeof showOnlyShortest === 'boolean' && showOnlyShortest === true) ||
+      (Array.isArray(showOnlyShortest) && showOnlyShortest[0] === 'true');
+
+    // Build date filter and exclude cancelled cases
+    const dateWhere: any = {
+      status: { not: 'cancelled' }, // Exclude cancelled RMA cases
+    };
+    if (fromDate) {
+      dateWhere.rmaRaisedDate = { ...dateWhere.rmaRaisedDate, gte: new Date(fromDate as string) };
+    }
+    if (toDate) {
+      const to = new Date(toDate as string);
+      to.setHours(23, 59, 59, 999);
+      dateWhere.rmaRaisedDate = { ...dateWhere.rmaRaisedDate, lte: to };
+    }
+
+    // Fetch RMA cases with projector + site info
+    const rmaCases = await prisma.rmaCase.findMany({
+      where: dateWhere,
+      include: {
+        site: {
+          select: {
+            siteName: true,
+          },
+        },
+        audi: {
+          include: {
+            projector: {
+              include: {
+                projectorModel: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { rmaRaisedDate: 'asc' },
+      take: 20000, // hard cap for safety
+    });
+
+    // Group by projector + part
+    type AgingRma = (typeof rmaCases)[number] & {
+      projectorSerial: string;
+      projectorModel?: string | null;
+      normalizedPartKey: string; // This is now the normalized part NAME only
+      partNumberKey: string | null;
+      normalizedPartName: string;
+    };
+
+    const agingCases: AgingRma[] = [];
+
+    for (const rma of rmaCases) {
+      const rmaWithAudi: any = rma as any;
+      const projector = rmaWithAudi.audi?.projector;
+
+      const projectorSerial: string =
+        projector?.serialNumber ||
+        rma.serialNumber ||
+        'UNKNOWN';
+
+      const projectorModel: string | null =
+        projector?.projectorModel?.modelNo || null;
+
+      // Use ONLY defectivePartName (primary) - no fallback
+      const rawPartName = rma.defectivePartName || null;
+
+      // Normalize part name (uses default mappings + optional DB aliases)
+      // This will handle variations like "Light Engine", "LE", "light engine" -> "Light Engine"
+      const normalizedName = await normalizePartName(rawPartName);
+      
+      // Skip if no part name (we need a part name to group by)
+      if (!normalizedName) {
+        continue;
+      }
+
+      // Store part number for reference (but don't use for grouping)
+      const partNumberKey: string | null =
+        rma.defectivePartNumber ||
+        rma.replacedPartNumber ||
+        rma.productPartNumber ||
+        null;
+
+      agingCases.push({
+        ...rma,
+        projectorSerial,
+        projectorModel,
+        normalizedPartKey: normalizedName, // Use ONLY normalized part name for grouping
+        partNumberKey,
+        normalizedPartName: normalizedName,
+      });
+    }
+
+    // Map: projectorSerial + partKey -> array of cases
+    const groups: Record<string, AgingRma[]> = {};
+
+    for (const rma of agingCases) {
+      const key = `${rma.projectorSerial}::${rma.normalizedPartKey}`;
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(rma);
+    }
+
+    // For each group, sort by date and find repeats within threshold
+    const resultGroups: any[] = [];
+    let totalRepeatPairs = 0;
+
+    for (const [key, groupCases] of Object.entries(groups)) {
+      if (groupCases.length < minRepeatCount) continue;
+
+      // Already sorted globally, but sort again for safety
+      groupCases.sort((a, b) => {
+        return new Date(a.rmaRaisedDate).getTime() - new Date(b.rmaRaisedDate).getTime();
+      });
+
+      const repeatPairs: any[] = [];
+
+      for (let i = 1; i < groupCases.length; i++) {
+        const prev = groupCases[i - 1];
+        const curr = groupCases[i];
+
+        const diffMs =
+          new Date(curr.rmaRaisedDate).getTime() -
+          new Date(prev.rmaRaisedDate).getTime();
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffDays <= threshold) {
+          repeatPairs.push({
+            firstCaseId: prev.id,
+            secondCaseId: curr.id,
+            firstRmaNumber: prev.rmaNumber,
+            secondRmaNumber: curr.rmaNumber,
+            firstCallLogNumber: prev.callLogNumber,
+            secondCallLogNumber: curr.callLogNumber,
+            firstDate: prev.rmaRaisedDate,
+            secondDate: curr.rmaRaisedDate,
+            daysBetween: diffDays,
+          });
+        }
+      }
+
+      if (repeatPairs.length === 0) continue;
+
+      // If showOnlyShortest is true, keep only the pair with the shortest gap
+      let finalRepeatPairs = repeatPairs;
+      if (onlyShortest && repeatPairs.length > 0) {
+        // Sort by daysBetween (ascending) and take the first one
+        const sorted = [...repeatPairs].sort((a, b) => a.daysBetween - b.daysBetween);
+        finalRepeatPairs = [sorted[0]];
+      }
+
+      totalRepeatPairs += finalRepeatPairs.length;
+
+      const sample = groupCases[0];
+      const [projectorSerial, normalizedPartName] = key.split('::');
+
+      resultGroups.push({
+        projectorSerial,
+        projectorModel: sample.projectorModel || null,
+        siteName: (sample as any).site?.siteName || 'Unknown',
+        partNumber: sample.partNumberKey,
+        partName: sample.defectivePartName || null, // Use only defectivePartName
+        normalizedPartName: normalizedPartName, // The normalized part name used for grouping
+        totalCases: groupCases.length,
+        repeatPairs: finalRepeatPairs,
+      });
+    }
+
+    // Apply filters if provided
+    let filteredGroups = resultGroups;
+    
+    // Parse filter arrays (handle both string and array inputs)
+    const parseFilterArray = (value: any): string[] => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value.map(v => String(v));
+      return [String(value)];
+    };
+
+    const filterSerialNumbers = parseFilterArray(serialNumbers);
+    const filterPartNames = parseFilterArray(partNames);
+    const filterSiteNames = parseFilterArray(siteNames);
+
+    // Apply filters (AND logic - all filters must match)
+    if (filterSerialNumbers.length > 0 || filterPartNames.length > 0 || filterSiteNames.length > 0) {
+      filteredGroups = resultGroups.filter((group) => {
+        // Serial number filter
+        if (filterSerialNumbers.length > 0) {
+          const matchesSerial = filterSerialNumbers.some(
+            (sn) => group.projectorSerial.toLowerCase().includes(sn.toLowerCase())
+          );
+          if (!matchesSerial) return false;
+        }
+
+        // Part name filter (check both normalized and original part name)
+        if (filterPartNames.length > 0) {
+          const matchesPart = filterPartNames.some(
+            (pn) => {
+              const normalizedFilter = pn.toLowerCase().trim();
+              return (
+                group.normalizedPartName.toLowerCase().includes(normalizedFilter) ||
+                (group.partName && group.partName.toLowerCase().includes(normalizedFilter))
+              );
+            }
+          );
+          if (!matchesPart) return false;
+        }
+
+        // Site name filter
+        if (filterSiteNames.length > 0) {
+          const matchesSite = filterSiteNames.some(
+            (sn) => group.siteName.toLowerCase().includes(sn.toLowerCase())
+          );
+          if (!matchesSite) return false;
+        }
+
+        return true;
+      });
+    }
+
+    // Sort groups by number of repeat pairs (descending)
+    filteredGroups.sort((a, b) => b.repeatPairs.length - a.repeatPairs.length);
+
+    return sendSuccess(res, {
+      summary: {
+        totalRmaCases: rmaCases.length,
+        totalGroups: Object.keys(groups).length,
+        groupsWithRepeats: resultGroups.length,
+        totalRepeatPairs,
+        thresholdDays: threshold,
+        minRepeats: minRepeatCount,
+        showOnlyShortest: onlyShortest,
+        dateRange: {
+          from: fromDate || null,
+          to: toDate || null,
+        },
+      },
+      groups: filteredGroups,
+    });
+  } catch (error: any) {
+    console.error('Get RMA aging analytics error:', error);
+    return sendError(res, 'Failed to fetch RMA aging analytics', 500, error.message);
+  }
+}
+
+// Get filter options for RMA aging analytics (for autocomplete)
+export async function getRmaAgingFilterOptions(req: AuthRequest, res: Response) {
+  try {
+    const { fromDate, toDate } = req.query;
+
+    // Build date filter and exclude cancelled cases
+    const dateWhere: any = {
+      status: { not: 'cancelled' }, // Exclude cancelled RMA cases
+    };
+    if (fromDate) {
+      dateWhere.rmaRaisedDate = { ...dateWhere.rmaRaisedDate, gte: new Date(fromDate as string) };
+    }
+    if (toDate) {
+      const to = new Date(toDate as string);
+      to.setHours(23, 59, 59, 999);
+      dateWhere.rmaRaisedDate = { ...dateWhere.rmaRaisedDate, lte: to };
+    }
+
+    // Fetch RMA cases with projector + site info
+    const rmaCases = await prisma.rmaCase.findMany({
+      where: dateWhere,
+      include: {
+        site: {
+          select: {
+            siteName: true,
+          },
+        },
+        audi: {
+          include: {
+            projector: {
+              select: {
+                serialNumber: true,
+              },
+            },
+          },
+        },
+      },
+      take: 50000, // Get more data for accurate options
+    });
+
+    // Extract unique values
+    const serialNumbers = new Set<string>();
+    const partNames = new Set<string>();
+    const siteNames = new Set<string>();
+
+    for (const rma of rmaCases) {
+      // Serial numbers
+      const projectorSerial = (rma as any).audi?.projector?.serialNumber || rma.serialNumber;
+      if (projectorSerial) {
+        serialNumbers.add(projectorSerial);
+      }
+
+      // Part names (normalize them)
+      if (rma.defectivePartName) {
+        const normalized = await normalizePartName(rma.defectivePartName);
+        if (normalized) {
+          partNames.add(normalized);
+        }
+      }
+
+      // Site names
+      if ((rma as any).site?.siteName) {
+        siteNames.add((rma as any).site.siteName);
+      }
+    }
+
+    return sendSuccess(res, {
+      serialNumbers: Array.from(serialNumbers).sort(),
+      partNames: Array.from(partNames).sort(),
+      siteNames: Array.from(siteNames).sort(),
+    });
+  } catch (error: any) {
+    console.error('Get RMA aging filter options error:', error);
+    return sendError(res, 'Failed to fetch filter options', 500, error.message);
   }
 }
 

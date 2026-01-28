@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Filter, X } from 'lucide-react';
 import { analyticsService, RmaAgingResponse, RmaAgingGroup } from '../services/analytics.service';
 
@@ -10,6 +10,10 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
   const [data, setData] = useState<RmaAgingResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<null | 'serial' | 'part' | 'site'>(null);
+  const serialWrapRef = useRef<HTMLDivElement | null>(null);
+  const partWrapRef = useRef<HTMLDivElement | null>(null);
+  const siteWrapRef = useRef<HTMLDivElement | null>(null);
   const [filters, setFilters] = useState({
     fromDate: '',
     toDate: '',
@@ -30,6 +34,64 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
     partName: '',
     siteName: '',
   });
+
+  // Close dropdown on click outside / escape
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+
+      const wrap =
+        activeDropdown === 'serial'
+          ? serialWrapRef.current
+          : activeDropdown === 'part'
+            ? partWrapRef.current
+            : activeDropdown === 'site'
+              ? siteWrapRef.current
+              : null;
+
+      if (wrap && !wrap.contains(target)) {
+        setActiveDropdown(null);
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveDropdown(null);
+      }
+    };
+
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [activeDropdown]);
+
+  const filteredSerialOptions = useMemo(() => {
+    const q = searchInputs.serialNumber.trim().toLowerCase();
+    if (!q) return [];
+    return filterOptions.serialNumbers
+      .filter(sn => sn.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [filterOptions.serialNumbers, searchInputs.serialNumber]);
+
+  const filteredPartOptions = useMemo(() => {
+    const q = searchInputs.partName.trim().toLowerCase();
+    if (!q) return [];
+    return filterOptions.partNames
+      .filter(pn => pn.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [filterOptions.partNames, searchInputs.partName]);
+
+  const filteredSiteOptions = useMemo(() => {
+    const q = searchInputs.siteName.trim().toLowerCase();
+    if (!q) return [];
+    return filterOptions.siteNames
+      .filter(sn => sn.toLowerCase().includes(q))
+      .slice(0, 10);
+  }, [filterOptions.siteNames, searchInputs.siteName]);
 
   // Fetch filter options
   useEffect(() => {
@@ -208,7 +270,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
           <h3 className="text-sm font-medium text-gray-700 mb-3">Search Filters</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Serial Number Filter */}
-            <div className="relative">
+            <div className="relative" ref={serialWrapRef}>
               <label className="block text-xs text-gray-600 mb-1">Serial Number</label>
               <div className="relative">
                 <input
@@ -216,7 +278,9 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                   value={searchInputs.serialNumber}
                   onChange={(e) => {
                     setSearchInputs(prev => ({ ...prev, serialNumber: e.target.value }));
+                    setActiveDropdown('serial');
                   }}
+                  onFocus={() => setActiveDropdown('serial')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && searchInputs.serialNumber.trim()) {
                       const value = searchInputs.serialNumber.trim();
@@ -226,41 +290,37 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                           selectedSerialNumbers: [...prev.selectedSerialNumbers, value],
                         }));
                         setSearchInputs(prev => ({ ...prev, serialNumber: '' }));
+                        setActiveDropdown(null);
                       }
                     }
                   }}
                   placeholder="Type to search..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 />
-                {searchInputs.serialNumber && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                    {filterOptions.serialNumbers
-                      .filter(sn => sn.toLowerCase().includes(searchInputs.serialNumber.toLowerCase()))
-                      .slice(0, 10)
-                      .length > 0 ? (
-                        filterOptions.serialNumbers
-                          .filter(sn => sn.toLowerCase().includes(searchInputs.serialNumber.toLowerCase()))
-                          .slice(0, 10)
-                          .map((sn) => (
-                            <div
-                              key={sn}
-                              onClick={() => {
-                                if (!filters.selectedSerialNumbers.includes(sn)) {
-                                  setFilters(prev => ({
-                                    ...prev,
-                                    selectedSerialNumbers: [...prev.selectedSerialNumbers, sn],
-                                  }));
-                                  setSearchInputs(prev => ({ ...prev, serialNumber: '' }));
-                                }
-                              }}
-                              className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 transition-colors"
-                            >
-                              {sn}
-                            </div>
-                          ))
-                      ) : (
-                        <div className="px-3 py-2 text-sm text-gray-500">No matches found</div>
-                      )}
+                {activeDropdown === 'serial' && searchInputs.serialNumber && (
+                  <div className="mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                    {filteredSerialOptions.length > 0 ? (
+                      filteredSerialOptions.map((sn) => (
+                        <div
+                          key={sn}
+                          onClick={() => {
+                            if (!filters.selectedSerialNumbers.includes(sn)) {
+                              setFilters(prev => ({
+                                ...prev,
+                                selectedSerialNumbers: [...prev.selectedSerialNumbers, sn],
+                              }));
+                            }
+                            setSearchInputs(prev => ({ ...prev, serialNumber: '' }));
+                            setActiveDropdown(null);
+                          }}
+                          className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 transition-colors"
+                        >
+                          {sn}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-gray-500">No matches found</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -291,7 +351,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
             </div>
 
             {/* Part Name Filter */}
-            <div className="relative">
+            <div className="relative" ref={partWrapRef}>
               <label className="block text-xs text-gray-600 mb-1">Part Name</label>
               <div className="relative">
                 <input
@@ -299,7 +359,9 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                   value={searchInputs.partName}
                   onChange={(e) => {
                     setSearchInputs(prev => ({ ...prev, partName: e.target.value }));
+                    setActiveDropdown('part');
                   }}
+                  onFocus={() => setActiveDropdown('part')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && searchInputs.partName.trim()) {
                       const value = searchInputs.partName.trim();
@@ -309,41 +371,37 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                           selectedPartNames: [...prev.selectedPartNames, value],
                         }));
                         setSearchInputs(prev => ({ ...prev, partName: '' }));
+                        setActiveDropdown(null);
                       }
                     }
                   }}
                   placeholder="Type to search..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 />
-                {searchInputs.partName && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                    {filterOptions.partNames
-                      .filter(pn => pn.toLowerCase().includes(searchInputs.partName.toLowerCase()))
-                      .slice(0, 10)
-                      .length > 0 ? (
-                        filterOptions.partNames
-                          .filter(pn => pn.toLowerCase().includes(searchInputs.partName.toLowerCase()))
-                          .slice(0, 10)
-                          .map((pn) => (
-                            <div
-                              key={pn}
-                              onClick={() => {
-                                if (!filters.selectedPartNames.includes(pn)) {
-                                  setFilters(prev => ({
-                                    ...prev,
-                                    selectedPartNames: [...prev.selectedPartNames, pn],
-                                  }));
-                                  setSearchInputs(prev => ({ ...prev, partName: '' }));
-                                }
-                              }}
-                              className="px-3 py-2 hover:bg-green-50 cursor-pointer text-sm text-gray-700 transition-colors"
-                            >
-                              {pn}
-                            </div>
-                          ))
-                      ) : (
-                        <div className="px-3 py-2 text-sm text-gray-500">No matches found</div>
-                      )}
+                {activeDropdown === 'part' && searchInputs.partName && (
+                  <div className="mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                    {filteredPartOptions.length > 0 ? (
+                      filteredPartOptions.map((pn) => (
+                        <div
+                          key={pn}
+                          onClick={() => {
+                            if (!filters.selectedPartNames.includes(pn)) {
+                              setFilters(prev => ({
+                                ...prev,
+                                selectedPartNames: [...prev.selectedPartNames, pn],
+                              }));
+                            }
+                            setSearchInputs(prev => ({ ...prev, partName: '' }));
+                            setActiveDropdown(null);
+                          }}
+                          className="px-3 py-2 hover:bg-green-50 cursor-pointer text-sm text-gray-700 transition-colors"
+                        >
+                          {pn}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-gray-500">No matches found</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -374,7 +432,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
             </div>
 
             {/* Site Name Filter */}
-            <div className="relative">
+            <div className="relative" ref={siteWrapRef}>
               <label className="block text-xs text-gray-600 mb-1">Site Name</label>
               <div className="relative">
                 <input
@@ -382,7 +440,9 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                   value={searchInputs.siteName}
                   onChange={(e) => {
                     setSearchInputs(prev => ({ ...prev, siteName: e.target.value }));
+                    setActiveDropdown('site');
                   }}
+                  onFocus={() => setActiveDropdown('site')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && searchInputs.siteName.trim()) {
                       const value = searchInputs.siteName.trim();
@@ -392,41 +452,37 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                           selectedSiteNames: [...prev.selectedSiteNames, value],
                         }));
                         setSearchInputs(prev => ({ ...prev, siteName: '' }));
+                        setActiveDropdown(null);
                       }
                     }
                   }}
                   placeholder="Type to search..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 />
-                {searchInputs.siteName && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                    {filterOptions.siteNames
-                      .filter(sn => sn.toLowerCase().includes(searchInputs.siteName.toLowerCase()))
-                      .slice(0, 10)
-                      .length > 0 ? (
-                        filterOptions.siteNames
-                          .filter(sn => sn.toLowerCase().includes(searchInputs.siteName.toLowerCase()))
-                          .slice(0, 10)
-                          .map((sn) => (
-                            <div
-                              key={sn}
-                              onClick={() => {
-                                if (!filters.selectedSiteNames.includes(sn)) {
-                                  setFilters(prev => ({
-                                    ...prev,
-                                    selectedSiteNames: [...prev.selectedSiteNames, sn],
-                                  }));
-                                  setSearchInputs(prev => ({ ...prev, siteName: '' }));
-                                }
-                              }}
-                              className="px-3 py-2 hover:bg-purple-50 cursor-pointer text-sm text-gray-700 transition-colors"
-                            >
-                              {sn}
-                            </div>
-                          ))
-                      ) : (
-                        <div className="px-3 py-2 text-sm text-gray-500">No matches found</div>
-                      )}
+                {activeDropdown === 'site' && searchInputs.siteName && (
+                  <div className="mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                    {filteredSiteOptions.length > 0 ? (
+                      filteredSiteOptions.map((sn) => (
+                        <div
+                          key={sn}
+                          onClick={() => {
+                            if (!filters.selectedSiteNames.includes(sn)) {
+                              setFilters(prev => ({
+                                ...prev,
+                                selectedSiteNames: [...prev.selectedSiteNames, sn],
+                              }));
+                            }
+                            setSearchInputs(prev => ({ ...prev, siteName: '' }));
+                            setActiveDropdown(null);
+                          }}
+                          className="px-3 py-2 hover:bg-purple-50 cursor-pointer text-sm text-gray-700 transition-colors"
+                        >
+                          {sn}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-gray-500">No matches found</div>
+                    )}
                   </div>
                 )}
               </div>

@@ -37,12 +37,14 @@ export const removeAuthToken = () => {
   localStorage.removeItem('auth_token');
 };
 
-// API request wrapper with authentication
+// API request wrapper with authentication, timeout, and retry logic
 export async function apiRequest<T = any>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  retries: number = 1
 ): Promise<{ success: boolean; data?: T; message?: string; error?: string }> {
   const token = getAuthToken();
+  const REQUEST_TIMEOUT = 30000; // 30 seconds
   
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -53,11 +55,51 @@ export async function apiRequest<T = any>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // Create abort controller for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
+
+    // Handle 401 (Unauthorized) - token expired
+    if (response.status === 401) {
+      removeAuthToken();
+      // Redirect to login or show error
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+      return {
+        success: false,
+        message: 'Session expired. Please login again.',
+        error: 'Unauthorized',
+      };
+    }
+
+    // Handle 403 (Forbidden) - invalid token
+    if (response.status === 403) {
+      removeAuthToken();
+      return {
+        success: false,
+        message: 'Invalid or expired token',
+        error: 'Forbidden',
+      };
+    }
+
+    // Handle 504 (Gateway Timeout)
+    if (response.status === 504) {
+      return {
+        success: false,
+        message: 'Request timeout - server took too long to respond',
+        error: 'Timeout',
+      };
+    }
 
     const data = await response.json();
 
@@ -75,10 +117,36 @@ export async function apiRequest<T = any>(
       message: data.message,
     };
   } catch (error: any) {
+    clearTimeout(timeoutId);
+    
+    // Handle abort (timeout)
+    if (error.name === 'AbortError') {
+      // Retry on timeout if retries remaining
+      if (retries > 0) {
+        console.warn(`Request timeout, retrying... (${retries} retries left)`);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+        return apiRequest<T>(endpoint, options, retries - 1);
+      }
+      return {
+        success: false,
+        message: 'Request timeout - please try again',
+        error: 'Timeout',
+      };
+    }
+
+    // Handle network errors with retry
+    if (error.message?.includes('fetch') || error.message?.includes('network')) {
+      if (retries > 0) {
+        console.warn(`Network error, retrying... (${retries} retries left)`);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+        return apiRequest<T>(endpoint, options, retries - 1);
+      }
+    }
+
     console.error('API Request Error:', error);
     return {
       success: false,
-      message: 'Network error',
+      message: 'Network error - please check your connection',
       error: error.message,
     };
   }

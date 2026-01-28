@@ -402,7 +402,7 @@ export async function getRmaPartAnalytics(req: AuthRequest, res: Response) {
         },
       },
       orderBy: { rmaRaisedDate: 'desc' },
-      take: 10000, // Limit to prevent excessive data fetching
+      take: 2000, // Limit to prevent excessive data fetching and memory issues
     });
 
     // 1. Total count
@@ -753,8 +753,13 @@ export async function getRmaAgingAnalytics(req: AuthRequest, res: Response) {
         },
       },
       orderBy: { rmaRaisedDate: 'asc' },
-      take: 20000, // hard cap for safety
+      take: 5000, // Limit to prevent memory exhaustion and slow queries
     });
+
+    // Log warning if we hit the limit
+    if (rmaCases.length >= 5000) {
+      console.warn('⚠️  RMA aging analytics: Hit 5000 record limit. Results may be incomplete.');
+    }
 
     // Group by projector + part
     type AgingRma = (typeof rmaCases)[number] & {
@@ -766,6 +771,22 @@ export async function getRmaAgingAnalytics(req: AuthRequest, res: Response) {
     };
 
     const agingCases: AgingRma[] = [];
+
+    // Batch normalize part names to reduce database queries
+    const uniquePartNames = new Set<string>();
+    rmaCases.forEach(rma => {
+      if (rma.defectivePartName) {
+        uniquePartNames.add(rma.defectivePartName);
+      }
+    });
+
+    // Pre-normalize all unique part names
+    const normalizationCache = new Map<string, string>();
+    const normalizePromises = Array.from(uniquePartNames).map(async (partName) => {
+      const normalized = await normalizePartName(partName);
+      normalizationCache.set(partName, normalized || partName);
+    });
+    await Promise.all(normalizePromises);
 
     for (const rma of rmaCases) {
       const rmaWithAudi: any = rma as any;
@@ -782,9 +803,8 @@ export async function getRmaAgingAnalytics(req: AuthRequest, res: Response) {
       // Use ONLY defectivePartName (primary) - no fallback
       const rawPartName = rma.defectivePartName || null;
 
-      // Normalize part name (uses default mappings + optional DB aliases)
-      // This will handle variations like "Light Engine", "LE", "light engine" -> "Light Engine"
-      const normalizedName = await normalizePartName(rawPartName);
+      // Use cached normalization
+      const normalizedName = rawPartName ? (normalizationCache.get(rawPartName) || rawPartName) : null;
       
       // Skip if no part name (we need a part name to group by)
       if (!normalizedName) {
@@ -997,7 +1017,7 @@ export async function getRmaAgingFilterOptions(req: AuthRequest, res: Response) 
           },
         },
       },
-      take: 50000, // Get more data for accurate options
+      take: 10000, // Limit for filter options - sufficient for unique values
     });
 
     // Extract unique values

@@ -22,20 +22,21 @@ if (!databaseUrl) {
     url.searchParams.delete('connect_timeout');
     
     // Add optimized connection pool parameters
-    // Reduced limits to prevent exhaustion with Neon
-    url.searchParams.set('connection_limit', '10');
-    url.searchParams.set('pool_timeout', '10');
-    url.searchParams.set('connect_timeout', '5');
+    // Increased limits to handle more concurrent requests
+    url.searchParams.set('connection_limit', '25');
+    url.searchParams.set('pool_timeout', '20');
+    url.searchParams.set('connect_timeout', '10');
+    url.searchParams.set('query_timeout', '30000'); // 30 seconds query timeout
     
     databaseUrl = url.toString();
-    console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 50, timeout: 20)');
+    console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 25, timeout: 20)');
   } catch (error) {
     // If URL parsing fails, try string manipulation
     console.warn('⚠️  Could not parse DATABASE_URL as URL, using string manipulation');
     if (!databaseUrl.includes('connection_limit')) {
       const separator = databaseUrl.includes('?') ? '&' : '?';
-      databaseUrl = `${databaseUrl}${separator}connection_limit=50&pool_timeout=20&connect_timeout=10`;
-      console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 10, timeout: 10)');
+      databaseUrl = `${databaseUrl}${separator}connection_limit=25&pool_timeout=20&connect_timeout=10&query_timeout=30000`;
+      console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 25, timeout: 20)');
     }
   }
 }
@@ -49,7 +50,53 @@ export const prisma =
         url: databaseUrl,
       },
     },
+    // Add query timeout to prevent hanging queries
+    // This will timeout queries after 30 seconds
   });
+
+// Add query timeout wrapper for critical queries
+export async function withQueryTimeout<T>(
+  query: () => Promise<T>,
+  timeoutMs: number = 30000
+): Promise<T> {
+  return Promise.race([
+    query(),
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Query timeout')), timeoutMs)
+    ),
+  ]);
+}
+
+// Connection retry logic with exponential backoff
+export async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 1000
+): Promise<T> {
+  let lastError: Error;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Don't retry on certain errors (e.g., validation errors)
+      if (error.code === 'P2002' || error.code === 'P2025') {
+        throw error;
+      }
+      
+      // Exponential backoff: 1s, 2s, 4s
+      if (attempt < maxRetries - 1) {
+        const delay = initialDelay * Math.pow(2, attempt);
+        console.warn(`Query failed, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError!;
+}
 
 // Cache Prisma Client in global scope to reuse across serverless function invocations
 if (process.env.NODE_ENV !== 'production') {

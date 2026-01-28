@@ -27,6 +27,7 @@ import partNameAliasRoutes from './routes/partNameAlias.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { requestIdMiddleware } from './middleware/requestId.middleware';
 import { authLimiter } from './middleware/rateLimit.middleware';
+import { requestTimeout } from './middleware/timeout.middleware';
 import { healthCheck } from './controllers/health.controller';
 
 // Load environment variables
@@ -41,6 +42,9 @@ const PORT = process.env.PORT || 5000;
 
 // Request ID tracking (must be early in middleware chain)
 app.use(requestIdMiddleware);
+
+// Request timeout (must be early to catch slow requests)
+app.use(requestTimeout);
 
 // Security
 app.use(helmet());

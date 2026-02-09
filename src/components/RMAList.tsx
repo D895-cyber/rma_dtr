@@ -10,9 +10,11 @@ import { ProtectedComponent } from './ProtectedComponent';
 
 interface RMAListProps {
   currentUser: any;
+  openCaseId?: string | null;
+  onOpenCaseHandled?: () => void;
 }
 
-export function RMAList({ currentUser }: RMAListProps) {
+export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListProps) {
   const { createCase, updateCase } = useRMACases();
   const [showForm, setShowForm] = useState(false);
   const [selectedRMA, setSelectedRMA] = useState<string | null>(null);
@@ -122,6 +124,16 @@ export function RMAList({ currentUser }: RMAListProps) {
   useEffect(() => {
     fetchAllCases();
   }, []); // Only run once on mount
+
+  // Open case from global search when list has loaded
+  useEffect(() => {
+    if (!openCaseId || !allRMACases.length) return;
+    const found = allRMACases.some((r) => r.id === openCaseId);
+    if (found) {
+      setSelectedRMA(openCaseId);
+      onOpenCaseHandled?.();
+    }
+  }, [openCaseId, allRMACases, onOpenCaseHandled]);
 
   // Debug: Log when dialog state changes
   useEffect(() => {
@@ -277,7 +289,10 @@ export function RMAList({ currentUser }: RMAListProps) {
         (r.productName?.toLowerCase() || '').includes(search) ||
         (r.serialNumber?.toLowerCase() || '').includes(search) ||
         (r.defectivePartName?.toLowerCase() || '').includes(search) ||
-        (r.defectivePartNumber?.toLowerCase() || '').includes(search);
+        (r.defectivePartNumber?.toLowerCase() || '').includes(search) ||
+        (r.defectivePartSerial?.toLowerCase() || '').includes(search) ||
+        (r.replacedPartNumber?.toLowerCase() || '').includes(search) ||
+        (r.replacedPartSerial?.toLowerCase() || '').includes(search);
       if (!matchesSearch) return false;
     }
     return true;
@@ -999,7 +1014,7 @@ export function RMAList({ currentUser }: RMAListProps) {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by RMA #, call log, site, product, serial, or part..."
+                placeholder="Search by RMA #, call log, site, product, serial, defective/replacement part S/N..."
                 className={`w-full pl-10 ${loadingAllCases && !isInitialLoad ? 'pr-10' : 'pr-4'} py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
               />
               {loadingAllCases && !isInitialLoad && (
@@ -1122,27 +1137,27 @@ export function RMAList({ currentUser }: RMAListProps) {
       </div>
 
       {/* Cases Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+        <div className="overflow-x-auto max-h-[calc(100vh-14rem)]">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
               <tr>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">RMA #</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Call Log #</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Order #</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Dates</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Site</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Audi No</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Product</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Defective Part</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Replacement Part</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Team</th>
-                <th className="px-6 py-3 text-left text-xs text-gray-600 uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">RMA #</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Call Log #</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Order #</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Type</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Dates</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Site</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Audi No</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Product</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Defective Part</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Replacement Part</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Team</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
               {!hasActiveFilters ? (
                 <tr>
                   <td colSpan={13} className="px-6 py-20">
@@ -1235,35 +1250,46 @@ export function RMAList({ currentUser }: RMAListProps) {
                       
                       {/* Title and Description */}
                       <div className="text-center mb-8">
-                        <h3 className="text-2xl font-bold text-gray-900 mb-3">No Results Found</h3>
-                        <p className="text-base text-gray-600 leading-relaxed max-w-md mx-auto mb-6">
-                          No RMA cases match your current search criteria. Try adjusting your filters or search terms to find what you're looking for.
+                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">No results found</h3>
+                        <p className="text-base text-gray-600 dark:text-gray-400 leading-relaxed max-w-md mx-auto mb-6">
+                          No RMA cases match your current search criteria. Clear filters or create a new case.
                         </p>
-                        <button
-                          onClick={() => {
-                            setSearchTerm('');
-                            setStatusFilter('all');
-                            setTypeFilter('all');
-                            setDateFrom('');
-                            setDateTo('');
-                            setYearFilter('all');
-                            setAgeFilter('all');
-                          }}
-                          className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200"
-                        >
-                          <X className="w-4 h-4" />
-                          Clear All Filters
-                        </button>
+                        <div className="flex flex-wrap items-center justify-center gap-3">
+                          <button
+                            onClick={() => {
+                              setSearchTerm('');
+                              setStatusFilter('all');
+                              setTypeFilter('all');
+                              setDateFrom('');
+                              setDateTo('');
+                              setYearFilter('all');
+                              setAgeFilter('all');
+                            }}
+                            className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                          >
+                            <X className="w-4 h-4" />
+                            Clear filters
+                          </button>
+                          <ProtectedComponent permission="rma:create">
+                            <button
+                              onClick={() => setShowForm(true)}
+                              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                            >
+                              <Plus className="w-4 h-4" />
+                              New RMA case
+                            </button>
+                          </ProtectedComponent>
+                        </div>
                       </div>
                     </div>
                   </td>
                 </tr>
               ) : (
                 filteredCases.map((rma) => (
-                <tr key={rma.id} className="hover:bg-gray-50">
+                <tr key={rma.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                   {/* RMA # */}
                   <td className="px-4 py-4 whitespace-nowrap min-w-[110px]">
-                    <span className="text-sm font-medium text-gray-900">{rma.rmaNumber || '-'}</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{rma.rmaNumber || '-'}</span>
                   </td>
                   
                   {/* Call Log # (DTR Link) */}

@@ -78,6 +78,11 @@ export const dtrService = {
   async closeDTRCase(id: string, finalRemarks: string) {
     return await api.post<{ case: DTRCase }>(`/dtr/${id}/close`, { finalRemarks });
   },
+
+  // Get audit log for DTR case
+  async getAuditLog(id: string) {
+    return await api.get<{ auditLogs: Array<{ id: string; action: string; description: string | null; performedAt: string; user: { name: string; email: string } }> }>(`/dtr/${id}/audit-log`);
+  },
 };
 
 export default dtrService;

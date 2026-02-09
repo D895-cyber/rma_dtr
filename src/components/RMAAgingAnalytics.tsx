@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Filter, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
+import { AlertTriangle, Download, Filter, X } from 'lucide-react';
 import { analyticsService, RmaAgingResponse, RmaAgingGroup } from '../services/analytics.service';
 
 interface RMAAgingAnalyticsProps {
@@ -142,15 +143,53 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
 
     fetchData();
   }, [
-    filters.fromDate, 
-    filters.toDate, 
-    filters.thresholdDays, 
-    filters.minRepeats, 
+    filters.fromDate,
+    filters.toDate,
+    filters.thresholdDays,
+    filters.minRepeats,
     filters.showOnlyShortest,
     filters.selectedSerialNumbers,
     filters.selectedPartNames,
     filters.selectedSiteNames,
   ]);
+
+  const exportToExcel = useCallback(() => {
+    if (!data || data.groups.length === 0) return;
+
+    const rows: Record<string, string | number>[] = [];
+
+    data.groups.forEach((group: RmaAgingGroup) => {
+      const partDisplay = group.normalizedPartName || group.partName || group.partNumber || 'Unknown';
+
+      group.repeatPairs.forEach((pair) => {
+        rows.push({
+          'Projector Serial': group.projectorSerial,
+          'Projector Model': group.projectorModel || '',
+          'Site': group.siteName,
+          'Part Name': partDisplay,
+          'Part Number': group.partNumber || '',
+          'Total Cases': group.totalCases,
+          'First RMA / Call Log': pair.firstRmaNumber || pair.firstCallLogNumber || '',
+          'First Date': pair.firstDate,
+          'Second RMA / Call Log': pair.secondRmaNumber || pair.secondCallLogNumber || '',
+          'Second Date': pair.secondDate,
+          'Days Between': pair.daysBetween,
+        });
+      });
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'RMA Aging Results');
+
+    const dateRange =
+      data.summary.dateRange.from && data.summary.dateRange.to
+        ? `${data.summary.dateRange.from}_to_${data.summary.dateRange.to}`
+        : new Date().toISOString().slice(0, 10);
+    const filename = `rma-aging-results_${dateRange}.xlsx`;
+
+    XLSX.writeFile(workbook, filename);
+  }, [data]);
 
   return (
     <div className="space-y-6">
@@ -537,24 +576,38 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
 
       {/* Summary */}
       {data && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-xs text-blue-600 font-medium mb-1">Total RMA Cases</p>
-            <p className="text-2xl font-bold text-blue-900">{data.summary.totalRmaCases}</p>
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-xs text-blue-600 font-medium mb-1">Total RMA Cases</p>
+                <p className="text-2xl font-bold text-blue-900">{data.summary.totalRmaCases}</p>
+              </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p className="text-xs text-yellow-600 font-medium mb-1">Groups with Repeats</p>
+                <p className="text-2xl font-bold text-yellow-900">{data.summary.groupsWithRepeats}</p>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-xs text-red-600 font-medium mb-1">Total Repeat Pairs</p>
+                <p className="text-2xl font-bold text-red-900">{data.summary.totalRepeatPairs}</p>
+              </div>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <p className="text-xs text-gray-600 font-medium mb-1">Threshold</p>
+                <p className="text-2xl font-bold text-gray-900">{data.summary.thresholdDays} days</p>
+              </div>
+            </div>
+            {data.groups.length > 0 && (
+              <button
+                type="button"
+                onClick={exportToExcel}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm shrink-0"
+              >
+                <Download className="w-4 h-4" />
+                Export to Excel
+              </button>
+            )}
           </div>
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-xs text-yellow-600 font-medium mb-1">Groups with Repeats</p>
-            <p className="text-2xl font-bold text-yellow-900">{data.summary.groupsWithRepeats}</p>
-          </div>
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-xs text-red-600 font-medium mb-1">Total Repeat Pairs</p>
-            <p className="text-2xl font-bold text-red-900">{data.summary.totalRepeatPairs}</p>
-          </div>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-xs text-gray-600 font-medium mb-1">Threshold</p>
-            <p className="text-2xl font-bold text-gray-900">{data.summary.thresholdDays} days</p>
-          </div>
-        </div>
+        </>
       )}
 
       {/* Content */}

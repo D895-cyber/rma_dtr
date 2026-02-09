@@ -91,6 +91,11 @@ export const rmaService = {
   async emailClient(id: string, data: { email: string; clientName?: string }) {
     return await api.post(`/rma/${id}/email-client`, data);
   },
+
+  // Get audit log for RMA case
+  async getAuditLog(id: string) {
+    return await api.get<{ auditLogs: Array<{ id: string; action: string; description: string | null; performedAt: string; user: { name: string; email: string } }> }>(`/rma/${id}/audit-log`);
+  },
 };
 
 export default rmaService;

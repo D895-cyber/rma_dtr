@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Mail, Smartphone, Loader2, Save } from 'lucide-react';
+import { toast } from 'sonner';
+import { Mail, Smartphone, Loader2, Save } from 'lucide-react';
 import { notificationPreferenceService, NotificationPreference } from '../services/notificationPreference.service';
 
 export function NotificationPreferences() {
@@ -31,7 +32,7 @@ export function NotificationPreferences() {
     try {
       setSaving(true);
       await notificationPreferenceService.updatePreferences(preferences);
-      alert('Notification preferences saved successfully!');
+      toast.success('Notification preferences saved');
     } catch (error) {
       console.error('Failed to save preferences:', error);
       alert('Failed to save preferences');
@@ -60,7 +61,7 @@ export function NotificationPreferences() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">Notification Preferences</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Notification Preferences</h3>
         <button
           onClick={handleSave}
           disabled={saving}
@@ -79,16 +80,19 @@ export function NotificationPreferences() {
           )}
         </button>
       </div>
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Choose what you get so it&apos;s useful, not noisy. In-app + optional email by category.
+      </p>
 
       {/* Email Notifications */}
       <div className="space-y-4">
-        <div className="flex items-center gap-2 text-gray-700">
+        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
           <Mail className="w-5 h-5" />
-          <h4 className="font-medium">Email Notifications</h4>
+          <h4 className="font-medium">Email</h4>
         </div>
         <div className="space-y-3 pl-7">
-          <label className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
-            <span className="text-sm text-gray-700">Case Assigned</span>
+          <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">Assignee (case assigned to you)</span>
             <input
               type="checkbox"
               checked={preferences.emailCaseAssigned}
@@ -96,8 +100,8 @@ export function NotificationPreferences() {
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
           </label>
-          <label className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
-            <span className="text-sm text-gray-700">Status Changed</span>
+          <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">Status change</span>
             <input
               type="checkbox"
               checked={preferences.emailStatusChanged}
@@ -105,8 +109,17 @@ export function NotificationPreferences() {
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
           </label>
-          <label className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
-            <span className="text-sm text-gray-700">Overdue Alert</span>
+          <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">Comment / mention</span>
+            <input
+              type="checkbox"
+              checked={preferences.emailCommentAdded}
+              onChange={(e) => updatePreference('emailCommentAdded', e.target.checked)}
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            />
+          </label>
+          <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">Due soon / overdue alert</span>
             <input
               type="checkbox"
               checked={preferences.emailOverdueAlert}
@@ -114,21 +127,12 @@ export function NotificationPreferences() {
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
           </label>
-          <label className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
-            <span className="text-sm text-gray-700">Escalation</span>
+          <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">Escalation</span>
             <input
               type="checkbox"
               checked={preferences.emailEscalation}
               onChange={(e) => updatePreference('emailEscalation', e.target.checked)}
-              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-            />
-          </label>
-          <label className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
-            <span className="text-sm text-gray-700">Comment Added</span>
-            <input
-              type="checkbox"
-              checked={preferences.emailCommentAdded}
-              onChange={(e) => updatePreference('emailCommentAdded', e.target.checked)}
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
           </label>
@@ -137,13 +141,13 @@ export function NotificationPreferences() {
 
       {/* In-App Notifications */}
       <div className="space-y-4">
-        <div className="flex items-center gap-2 text-gray-700">
+        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
           <Smartphone className="w-5 h-5" />
-          <h4 className="font-medium">In-App Notifications</h4>
+          <h4 className="font-medium">In-app</h4>
         </div>
         <div className="space-y-3 pl-7">
-          <label className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
-            <span className="text-sm text-gray-700">Case Assigned</span>
+          <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">Assignee</span>
             <input
               type="checkbox"
               checked={preferences.inAppCaseAssigned}
@@ -151,8 +155,8 @@ export function NotificationPreferences() {
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
           </label>
-          <label className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
-            <span className="text-sm text-gray-700">Status Changed</span>
+          <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">Status change</span>
             <input
               type="checkbox"
               checked={preferences.inAppStatusChanged}
@@ -160,8 +164,8 @@ export function NotificationPreferences() {
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
           </label>
-          <label className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
-            <span className="text-sm text-gray-700">Overdue Alert</span>
+          <label className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">Due soon / overdue</span>
             <input
               type="checkbox"
               checked={preferences.inAppOverdueAlert}

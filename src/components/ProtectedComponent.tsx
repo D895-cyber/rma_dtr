@@ -9,7 +9,7 @@ interface ProtectedComponentProps {
   requireAll?: boolean;
   roles?: ('staff' | 'engineer' | 'manager' | 'admin')[];
   fallback?: React.ReactNode;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export function ProtectedComponent({
@@ -18,7 +18,7 @@ export function ProtectedComponent({
   requireAll = false,
   roles,
   fallback = null,
-  children,
+  children = null,
 }: ProtectedComponentProps) {
   const { can, canAny, canAll, isRole } = usePermissions();
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Package, AlertCircle, CheckCircle, Clock, TrendingUp } from 'lucide-react';
+import { FileText, Package, AlertCircle, CheckCircle, Clock, TrendingUp, LayoutGrid, X } from 'lucide-react';
 import { analyticsService } from '../services/analytics.service';
+import { useDashboardLayout, DASHBOARD_WIDGET_IDS, WIDGET_LABELS, type DashboardWidgetId } from '../hooks/useDashboardLayout';
 
 interface DashboardProps {
   currentUser: any;
@@ -28,6 +29,8 @@ interface DashboardStats {
 export function Dashboard({ currentUser }: DashboardProps) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const { visibleOrder, layout, setEnabled } = useDashboardLayout(currentUser?.id || '');
 
   // Helper function to get site name
   const getSiteName = (site: string | { siteName: string } | any): string => {
@@ -88,137 +91,152 @@ export function Dashboard({ currentUser }: DashboardProps) {
   const overdueRMA = (stats.rma as any).overdueCases || [];
 
   return (
-    <div className="space-y-6 w-full max-w-full">
+    <div className="space-y-8 w-full max-w-full">
       {/* Welcome Section */}
-      <div className="pb-2">
-        <h2 className="text-3xl font-bold text-gray-900 mb-1">Welcome back, {currentUser.name}!</h2>
-        <p className="text-gray-600">Here&apos;s an overview of your service operations</p>
+      <div className="pb-1 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 tracking-tight">Welcome back, {currentUser.name}!</h2>
+          <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">Here&apos;s what needs attention today.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setCustomizeOpen(true)}
+          className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
+          title="Customize dashboard"
+        >
+          <LayoutGrid className="w-4 h-4 shrink-0" />
+          Customize
+        </button>
       </div>
 
-      {/* DTR Stats */}
-      <div>
-        <h3 className="text-xl font-bold text-gray-900 mb-3 flex items-center gap-2">
-          <FileText className="w-5 h-5 text-blue-600" />
-          DTR Overview
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-blue-300 transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</p>
-              <FileText className="w-4 h-4 text-blue-600" />
+      {/* Widgets in user order */}
+      {visibleOrder.includes('dtr-stats') && (
+      <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 shadow-md overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-600 shrink-0" />
+            DTR Overview
+          </h3>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5">
+            <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4 transition-colors hover:border-blue-300 dark:hover:border-blue-600">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total</p>
+                <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+              </div>
+              <p className="text-3xl font-bold tabular-nums text-gray-900 dark:text-white">{dtrStats.total}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">All cases</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{dtrStats.total}</p>
-            <p className="text-xs text-gray-500 mt-1">All cases</p>
-          </div>
-          
-          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-orange-300 transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Open</p>
-              <AlertCircle className="w-4 h-4 text-orange-600" />
+            <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4 transition-colors hover:border-orange-300 dark:hover:border-orange-600">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Open</p>
+                <AlertCircle className="w-4 h-4 text-orange-600 shrink-0" />
+              </div>
+              <p className="text-3xl font-bold tabular-nums text-orange-600">{dtrStats.open}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Need attention</p>
             </div>
-            <p className="text-3xl font-bold text-orange-600">{dtrStats.open}</p>
-            <p className="text-xs text-gray-500 mt-1">Need attention</p>
-          </div>
-          
-          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-yellow-300 transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Active</p>
-              <Clock className="w-4 h-4 text-yellow-600" />
+            <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4 transition-colors hover:border-yellow-400 dark:hover:border-yellow-600">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Active</p>
+                <Clock className="w-4 h-4 text-yellow-600 shrink-0" />
+              </div>
+              <p className="text-3xl font-bold tabular-nums text-yellow-600">{dtrStats.inProgress}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">In progress</p>
             </div>
-            <p className="text-3xl font-bold text-yellow-600">{dtrStats.inProgress}</p>
-            <p className="text-xs text-gray-500 mt-1">In progress</p>
-          </div>
-          
-          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-green-300 transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Closed</p>
-              <CheckCircle className="w-4 h-4 text-green-600" />
+            <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4 transition-colors hover:border-green-300 dark:hover:border-green-600">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Closed</p>
+                <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+              </div>
+              <p className="text-3xl font-bold tabular-nums text-green-600">{dtrStats.closed}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Resolved</p>
             </div>
-            <p className="text-3xl font-bold text-green-600">{dtrStats.closed}</p>
-            <p className="text-xs text-gray-500 mt-1">Resolved</p>
-          </div>
-          
-          <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border-2 border-red-300 p-4 hover:shadow-lg transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-red-700 uppercase tracking-wide">Critical</p>
-              <AlertCircle className="w-4 h-4 text-red-700" />
+            <div className="rounded-lg border-2 border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/30 p-4 transition-colors hover:border-red-400 dark:hover:border-red-500">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-red-700 dark:text-red-400 uppercase tracking-wide">Critical</p>
+                <AlertCircle className="w-4 h-4 text-red-700 dark:text-red-400" />
+              </div>
+              <p className="text-3xl font-bold tabular-nums text-red-700 dark:text-red-400">{dtrStats.critical}</p>
+              <p className="text-xs text-red-600 dark:text-red-400 mt-1">Urgent action!</p>
             </div>
-            <p className="text-3xl font-bold text-red-700">{dtrStats.critical}</p>
-            <p className="text-xs text-red-600 mt-1">Urgent action!</p>
           </div>
         </div>
-      </div>
+      </section>
+      )}
 
-      {/* RMA Stats */}
-      <div>
-        <h3 className="text-xl font-bold text-gray-900 mb-3 flex items-center gap-2">
-          <Package className="w-5 h-5 text-purple-600" />
-          RMA Overview
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-purple-300 transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</p>
-              <Package className="w-4 h-4 text-purple-600" />
+      {visibleOrder.includes('rma-stats') && (
+      <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 shadow-md overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <Package className="w-5 h-5 text-purple-600 shrink-0" />
+            RMA Overview
+          </h3>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5">
+            <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4 transition-colors hover:border-purple-300 dark:hover:border-purple-600">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total</p>
+                <Package className="w-4 h-4 text-purple-600 shrink-0" />
+              </div>
+              <p className="text-3xl font-bold tabular-nums text-gray-900 dark:text-white">{rmaStats.total}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">All RMAs</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{rmaStats.total}</p>
-            <p className="text-xs text-gray-500 mt-1">All RMAs</p>
-          </div>
-          
-          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-orange-300 transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Open</p>
-              <Clock className="w-4 h-4 text-orange-600" />
+            <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4 transition-colors hover:border-orange-300 dark:hover:border-orange-600">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Open</p>
+                <Clock className="w-4 h-4 text-orange-600 shrink-0" />
+              </div>
+              <p className="text-3xl font-bold tabular-nums text-orange-600">{rmaStats.open}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Pending</p>
             </div>
-            <p className="text-3xl font-bold text-orange-600">{rmaStats.open}</p>
-            <p className="text-xs text-gray-500 mt-1">Pending</p>
-          </div>
-          
-          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-blue-300 transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Transit</p>
-              <TrendingUp className="w-4 h-4 text-blue-600" />
+            <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4 transition-colors hover:border-blue-300 dark:hover:border-blue-600">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Transit</p>
+                <TrendingUp className="w-4 h-4 text-blue-600 shrink-0" />
+              </div>
+              <p className="text-3xl font-bold tabular-nums text-blue-600">{rmaStats.inTransit}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">On the way</p>
             </div>
-            <p className="text-3xl font-bold text-blue-600">{rmaStats.inTransit}</p>
-            <p className="text-xs text-gray-500 mt-1">On the way</p>
-          </div>
-          
-          <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg hover:border-green-300 transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Closed</p>
-              <CheckCircle className="w-4 h-4 text-green-600" />
+            <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 p-4 transition-colors hover:border-green-300 dark:hover:border-green-600">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Closed</p>
+                <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+              </div>
+              <p className="text-3xl font-bold tabular-nums text-green-600">{rmaStats.closed}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Completed</p>
             </div>
-            <p className="text-3xl font-bold text-green-600">{rmaStats.closed}</p>
-            <p className="text-xs text-gray-500 mt-1">Completed</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border-2 border-red-300 p-4 hover:shadow-lg transition-all">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-red-700 uppercase tracking-wide">Overdue</p>
-              <AlertCircle className="w-4 h-4 text-red-700" />
+            <div className="rounded-lg border-2 border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/30 p-4 transition-colors hover:border-red-400 dark:hover:border-red-500">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-red-700 dark:text-red-400 uppercase tracking-wide">Overdue</p>
+                <AlertCircle className="w-4 h-4 text-red-700 dark:text-red-400" />
+              </div>
+              <p className="text-3xl font-bold tabular-nums text-red-700 dark:text-red-400">{rmaStats.overdue}</p>
+              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                {rmaStats.total > 0 ? Math.round((rmaStats.overdue / rmaStats.total) * 100) : 0}% (30+ days)
+              </p>
             </div>
-            <p className="text-3xl font-bold text-red-700">{rmaStats.overdue}</p>
-            <p className="text-xs text-red-600 mt-1">
-              {rmaStats.total > 0 ? Math.round((rmaStats.overdue / rmaStats.total) * 100) : 0}% (30+ days)
-            </p>
           </div>
         </div>
-      </div>
+      </section>
+      )}
 
       {/* Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent DTR */}
-        <div className="bg-white rounded-lg border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-gray-900">Recent DTR Cases</h3>
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {visibleOrder.includes('recent-dtr') && (
+        /* Recent DTR */
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent DTR Cases</h3>
           </div>
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {recentDTR.map((dtr) => (
-              <div key={dtr.id} className="px-6 py-4 hover:bg-gray-50">
+              <div key={dtr.id} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="text-sm text-gray-900">{dtr.caseNumber}</p>
-                    <p className="text-xs text-gray-600">{getSiteName(dtr.site)}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{dtr.caseNumber}</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">{getSiteName(dtr.site)}</p>
                   </div>
                   <span className={`px-2 py-1 rounded text-xs ${
                     dtr.caseSeverity === 'critical' ? 'bg-red-100 text-red-700' :
@@ -229,28 +247,30 @@ export function Dashboard({ currentUser }: DashboardProps) {
                     {dtr.caseSeverity}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500">{dtr.natureOfProblem}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{dtr.natureOfProblem}</p>
               </div>
             ))}
           </div>
         </div>
+        )}
 
-        {/* Recent RMA */}
-        <div className="bg-white rounded-lg border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-gray-900">Recent RMA Cases</h3>
+        {visibleOrder.includes('recent-rma') && (
+        /* Recent RMA */
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent RMA Cases</h3>
           </div>
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {recentRMA.map((rma) => (
-              <div key={rma.id} className="px-6 py-4 hover:bg-gray-50">
+              <div key={rma.id} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                 <div className="flex items-start justify-between mb-2">
                   <div>
                     {/* Top line: RMA # or Call Log # */}
-                    <p className="text-sm text-gray-900">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
                       {rma.rmaNumber || rma.callLogNumber || 'N/A'}
                     </p>
                     {/* Second line: Site name (like DTR list) */}
-                    <p className="text-xs text-gray-600">
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
                       {getSiteName(rma.site || (rma.siteName as any)) || '-'}
                     </p>
                   </div>
@@ -282,7 +302,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
                   </span>
                 </div>
                 {/* Third line: Defective part name (or product) like DTR problem text */}
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
                   {rma.defectivePartName || rma.productName || '-'}
                 </p>
               </div>
@@ -291,16 +311,16 @@ export function Dashboard({ currentUser }: DashboardProps) {
 
           {/* Overdue RMA Cases (30+ days) */}
           {overdueRMA.length > 0 && (
-            <div className="border-t border-gray-200 mt-2 pt-2">
+            <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
               <div className="flex items-center justify-between px-6 py-3">
-                <h4 className="text-sm font-semibold text-gray-800">
+                <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
                   Overdue RMA Cases (30+ days after shipped)
                 </h4>
-                <span className="text-xs text-red-600 font-medium">
+                <span className="text-xs text-red-600 dark:text-red-400 font-medium">
                   {overdueRMA.length} shown
                 </span>
               </div>
-              <div className="divide-y divide-gray-200">
+              <div className="divide-y divide-gray-200 dark:divide-gray-700">
                 {overdueRMA.map((rma: any) => {
                   const shippedDate = rma.shippedDate ? new Date(rma.shippedDate) : null;
                   const daysOverdue =
@@ -311,22 +331,22 @@ export function Dashboard({ currentUser }: DashboardProps) {
                       : null;
 
                   return (
-                    <div key={rma.id} className="px-6 py-3 bg-red-50 hover:bg-red-100/60">
+                    <div key={rma.id} className="px-6 py-3 bg-red-50 dark:bg-red-900/20 hover:bg-red-100/60 dark:hover:bg-red-900/30 transition-colors">
                       <div className="flex items-start justify-between mb-1">
                         <div>
-                          <p className="text-sm text-gray-900">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
                             {rma.rmaNumber || rma.callLogNumber || 'N/A'}
                           </p>
-                          <p className="text-xs text-gray-600">
+                          <p className="text-xs text-gray-600 dark:text-gray-400">
                             {getSiteName(rma.site)} • {rma.productName}
                           </p>
                           {rma.defectivePartName && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
                               Part: {rma.defectivePartName}
                             </p>
                           )}
                           {shippedDate && (
-                            <p className="text-[11px] text-gray-500">
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
                               Shipped:{' '}
                               {shippedDate.toLocaleDateString('en-US', {
                                 year: 'numeric',
@@ -337,7 +357,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
                             </p>
                           )}
                         </div>
-                        <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-700">
+                        <span className="px-2 py-1 rounded text-xs bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300">
                           Overdue
                         </span>
                       </div>
@@ -348,7 +368,36 @@ export function Dashboard({ currentUser }: DashboardProps) {
             </div>
           )}
         </div>
-      </div>
+        )}
+      </section>
+
+      {customizeOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setCustomizeOpen(false)} aria-hidden />
+          <div className="relative w-full max-w-sm rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Dashboard widgets</h3>
+              <button type="button" onClick={() => setCustomizeOpen(false)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="Close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Choose which widgets to show on your dashboard.</p>
+            <div className="space-y-2">
+              {DASHBOARD_WIDGET_IDS.map((id) => (
+                <label key={id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={layout.enabled.includes(id)}
+                    onChange={(e) => setEnabled(id, e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <span className="text-sm text-gray-900 dark:text-white">{WIDGET_LABELS[id]}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

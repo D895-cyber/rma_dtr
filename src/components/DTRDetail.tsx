@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Edit, Check, AlertCircle, ArrowRight, History } from 'lucide-react';
+import { X, Edit, Check, AlertCircle, ArrowRight, History, ChevronRight, ArrowLeft } from 'lucide-react';
 import { DTRCase, useUsersAPI, useRMACases, useDTRCases } from '../hooks/useAPI';
 import { dtrService } from '../services/dtr.service';
 import { FileUpload } from './FileUpload';
 import { AttachmentList } from './AttachmentList';
+import { CaseTimeline } from './CaseTimeline';
 
 interface DTRDetailProps {
   dtr: DTRCase;
@@ -189,12 +190,30 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb + Back to list */}
+      <nav className="flex flex-wrap items-center gap-2 text-sm">
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex items-center gap-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 rounded px-1 py-0.5 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 shrink-0" />
+          Back to list
+        </button>
+        <span className="text-gray-400 dark:text-gray-500" aria-hidden>|</span>
+        <span className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+          <span>DTR Cases</span>
+          <ChevronRight className="w-4 h-4 shrink-0" />
+          <span className="font-medium text-gray-900 dark:text-white">{dtr.caseNumber}</span>
+        </span>
+      </nav>
+
       {/* Header */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <h2 className="text-gray-900">DTR Case: {dtr.caseNumber}</h2>
+              <h2 className="text-gray-900 dark:text-white">DTR Case: {dtr.caseNumber}</h2>
               <span className={`px-3 py-1 rounded text-sm ${
                 dtr.callStatus === 'closed' ? 'bg-green-100 text-green-700' :
                 dtr.callStatus === 'in-progress' ? 'bg-blue-100 text-blue-700' :
@@ -212,26 +231,29 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
                 {dtr.caseSeverity} severity
               </span>
             </div>
-            <p className="text-sm text-gray-600">Created by {dtr.createdBy} on {new Date(dtr.createdDate).toLocaleString()}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">Created by {dtr.createdBy} on {new Date(dtr.createdDate).toLocaleString()}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowAudit(!showAudit)}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+              aria-label="Toggle audit log"
             >
               <History className="w-5 h-5" />
             </button>
             {!isEditing && (
               <button
                 onClick={() => setIsEditing(true)}
-                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                aria-label="Edit"
               >
                 <Edit className="w-5 h-5" />
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-gray-600 rounded-lg transition-colors"
+              className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
@@ -270,10 +292,15 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
         </div>
       </div>
 
+      {/* Timeline - chronological activity */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+        <CaseTimeline caseType="DTR" caseId={dtr.id} />
+      </div>
+
       {/* Audit Log */}
       {showAudit && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-gray-900 mb-4">Audit Log</h3>
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="text-gray-900 dark:text-white mb-4">Audit Log</h3>
           <div className="space-y-3">
             {dtr.auditLog && Array.isArray(dtr.auditLog) && dtr.auditLog.length > 0 ? (
               dtr.auditLog.map((entry) => (

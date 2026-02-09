@@ -1,0 +1,253 @@
+/* Dark mode: applied when html has class "dark". Uses design tokens from index.css .dark block. */
+
+.dark body,
+.dark #root,
+.dark #root > div {
+  background-color: var(--background) !important;
+  color: var(--foreground);
+}
+
+.dark .min-h-screen,
+.dark .bg-gray-50 {
+  background-color: var(--background) !important;
+}
+
+.dark .bg-white {
+  background-color: var(--card) !important;
+  border-color: var(--border) !important;
+  color: var(--card-foreground);
+}
+
+.dark .border-gray-200,
+.dark .border-gray-700,
+.dark .border-gray-100 {
+  border-color: var(--border) !important;
+}
+
+.dark .text-gray-900,
+.dark .text-gray-700,
+.dark .text-gray-800 {
+  color: var(--foreground) !important;
+}
+
+.dark .text-gray-500,
+.dark .text-gray-600,
+.dark .text-gray-400 {
+  color: var(--muted-foreground) !important;
+}
+
+.dark .hover\:bg-gray-100:hover,
+.dark .hover\:bg-gray-700:hover {
+  background-color: var(--accent) !important;
+}
+
+.dark .hover\:text-gray-900:hover,
+.dark .hover\:text-white:hover,
+.dark .hover\:text-gray-700:hover {
+  color: var(--foreground) !important;
+}
+
+.dark .border-blue-600,
+.dark .text-blue-600 {
+  border-color: oklch(.488 .243 264.376);
+  color: oklch(.7 .2 264);
+}
+
+.dark .bg-blue-50,
+.dark .dark\:bg-blue-900\/30 {
+  background-color: oklch(.269 .1 264) !important;
+}
+
+.dark .text-blue-700,
+.dark .text-blue-400,
+.dark .text-blue-300 {
+  color: oklch(.7 .2 264) !important;
+}
+
+.dark .border-transparent {
+  border-color: transparent;
+}
+
+.dark .divide-gray-200,
+.dark .divide-gray-100 {
+  border-color: var(--border);
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: var(--input);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.dark .shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+}
+
+/* Nav tab active state */
+.dark .border-blue-600.text-blue-600 {
+  color: oklch(.7 .2 264) !important;
+  border-color: oklch(.488 .243 264.376);
+}
+
+.dark .bg-blue-50.border-blue-600 {
+  background-color: oklch(.269 .1 264) !important;
+}
+
+/* Cards and panels */
+.dark .rounded-xl.border,
+.dark .rounded-lg.border {
+  background-color: var(--card) !important;
+  border-color: var(--border) !important;
+  color: var(--card-foreground);
+}
+
+.dark .hover\:border-blue-300:hover,
+.dark .hover\:border-gray-300:hover {
+  border-color: var(--ring) !important;
+}
+
+/* Badges, pills, tags: ensure readable contrast in dark mode (dark bg + light text) */
+.dark .bg-gray-100 {
+  background-color: var(--muted) !important;
+  color: var(--foreground) !important;
+}
+
+.dark .bg-gray-100.text-gray-700,
+.dark .bg-gray-100.text-gray-600 {
+  color: var(--foreground) !important;
+}
+
+.dark .bg-purple-100 {
+  background-color: rgba(139, 92, 246, 0.28) !important;
+  color: #c4b5fd !important;
+}
+
+.dark .bg-purple-100.text-purple-700,
+.dark .bg-purple-100.text-purple-800 {
+  color: #c4b5fd !important;
+}
+
+.dark .bg-green-100 {
+  background-color: rgba(34, 197, 94, 0.22) !important;
+  color: #86efac !important;
+}
+
+.dark .bg-green-100.text-green-700 {
+  color: #86efac !important;
+}
+
+.dark .bg-yellow-100 {
+  background-color: rgba(234, 179, 8, 0.22) !important;
+  color: #fde047 !important;
+}
+
+.dark .bg-yellow-100.text-yellow-700 {
+  color: #fde047 !important;
+}
+
+.dark .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.25) !important;
+  color: #93c5fd !important;
+}
+
+.dark .bg-blue-100.text-blue-700,
+.dark .bg-blue-100.text-blue-600 {
+  color: #93c5fd !important;
+}
+
+.dark .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.22) !important;
+  color: #fca5a5 !important;
+}
+
+.dark .bg-red-100.text-red-700 {
+  color: #fca5a5 !important;
+}
+
+.dark .bg-orange-100 {
+  background-color: rgba(249, 115, 22, 0.22) !important;
+  color: #fdba74 !important;
+}
+
+.dark .bg-orange-100.text-orange-700 {
+  color: #fdba74 !important;
+}
+
+/* Table header and body backgrounds */
+.dark thead.bg-gray-50 {
+  background-color: var(--muted) !important;
+}
+
+.dark thead.bg-gray-50 th {
+  color: var(--muted-foreground) !important;
+}
+
+/* Table cells: ensure text is visible */
+.dark tbody.bg-white {
+  background-color: var(--card) !important;
+}
+
+.dark tbody .text-gray-900 {
+  color: var(--foreground) !important;
+}
+
+.dark tbody .text-gray-600 {
+  color: var(--muted-foreground) !important;
+}
+
+/* Row/card hover (Dashboard Recent DTR/RMA, tables): keep dark background so text stays visible */
+.dark .hover\:bg-gray-50:hover,
+.dark tr.hover\:bg-gray-50:hover,
+.dark tbody tr:hover {
+  background-color: var(--accent) !important;
+}
+
+/* Dashboard list rows: ensure text stays visible on hover */
+.dark .hover\:bg-gray-50:hover .text-gray-900,
+.dark .hover\:bg-gray-50:hover .text-gray-500,
+.dark .hover\:bg-gray-50:hover .text-gray-600,
+.dark .hover\:bg-gray-50:hover .text-gray-700 {
+  color: var(--foreground) !important;
+}
+
+.dark tbody tr:hover .text-gray-900,
+.dark tbody tr:hover .text-gray-700,
+.dark tbody tr:hover .text-gray-600 {
+  color: var(--foreground) !important;
+}
+
+.dark tbody tr:hover .text-red-600 {
+  color: #fca5a5 !important;
+}
+
+.dark tbody tr:hover .text-orange-600 {
+  color: #fdba74 !important;
+}
+
+.dark tbody tr:hover .text-yellow-600 {
+  color: #fde047 !important;
+}
+
+/* Dashboard overdue RMA rows: dark red tint so text is visible */
+.dark .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: var(--foreground);
+}
+
+.dark .hover\:bg-red-100\/60:hover,
+.dark .bg-red-50.hover\:bg-red-100\/60:hover {
+  background-color: rgba(239, 68, 68, 0.25) !important;
+}
+
+.dark .bg-red-50 .text-gray-900,
+.dark .bg-red-50 .text-gray-600,
+.dark .bg-red-50 .text-gray-500,
+.dark .bg-red-50 .text-red-600 {
+  color: var(--foreground) !important;
+}
+
+.dark .bg-red-50 .text-red-600 {
+  color: #fca5a5 !important;
+}

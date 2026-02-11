@@ -1,5 +1,29 @@
 # 🔧 Vercel Deployment Troubleshooting
 
+## Issue: PWA manifest.webmanifest returns 401 (Install not working)
+
+**Symptoms:** Console shows `Failed to load resource: manifest.webmanifest server responded with status 401` and the PWA install button never appears or install fails.
+
+**Cause:** Vercel **Deployment Protection** (Password Protection or Vercel Authentication) applies to all requests. The browser requests `/manifest.webmanifest` and `/sw.js` without cookies, so they get 401 and PWA install cannot work.
+
+**Fix:**
+
+1. Open **Vercel Dashboard** → your project → **Settings** → **Deployment Protection**.
+2. Either:
+   - **Disable** protection for **Production** (so the live site and PWA assets are public), or
+   - Set protection to **“Only Preview Deployments”** so production is public and only preview URLs are protected.
+3. Redeploy if needed. After that, `/manifest.webmanifest` and `/sw.js` should return 200 and the install prompt can appear.
+
+If you must keep production protected, PWA install from that domain will not work unless you use a different hosting for static assets or an Enterprise/Advanced exception.
+
+---
+
+## Console: “[DEPRECATED] Default export is deprecated” (zustand)
+
+This warning comes from a **dependency** (e.g. a library that uses `zustand`), not from your app code. It does not break the app. You can ignore it or wait for the upstream package to switch to `import { create } from 'zustand'`. No change required in this project.
+
+---
+
 ## Issue: Vercel Not Taking Updates
 
 If Vercel is not automatically deploying after a git push, try these solutions:

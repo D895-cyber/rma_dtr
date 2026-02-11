@@ -463,9 +463,9 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   }, {} as Record<string, number>);
 
   const sitewiseData = Object.entries(siteStats)
-    .map(([site, count]) => ({ site, count }))
+    .map(([site, count]) => ({ site, count: Number(count) }))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+    .slice(0, 10);
 
   // Model-wise failure patterns
   const modelStats = dtrCases.reduce((acc, dtr) => {
@@ -476,9 +476,9 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   }, {} as Record<string, number>);
 
   const modelwiseData = Object.entries(modelStats)
-    .map(([model, count]) => ({ model: model.substring(0, 20), count }))
+    .map(([model, count]) => ({ model: model.substring(0, 20), count: Number(count) }))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+    .slice(0, 10);
 
   // Turnaround time for closed RMAs
   const closedRMAsWithValidDates = rmaCases.filter(r => {
@@ -525,7 +525,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   }, {} as Record<string, number>);
 
   const partFailureData = Object.entries(defectivePartTypes)
-    .map(([part, count]) => ({ part, count }))
+    .map(([part, count]) => ({ part, count: Number(count) }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 6);
 
@@ -691,11 +691,11 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       ['Replacement Parts Not Shipped (30+ days)', overdueReplacementShipping.length],
       ['Defective Parts Not Returned (30+ days)', overdueDefectiveReturn.length],
       [],
-      ['Top 5 Sites by Issue Frequency'],
+      ['Top 10 Sites by Issue Frequency'],
       ['Site', 'Issue Count'],
       ...sitewiseData.map(s => [s.site, s.count]),
       [],
-      ['Top 5 Models by Failure Rate'],
+      ['Top 10 Models by Failure Rate'],
       ['Model', 'Failure Count'],
       ...modelwiseData.map(m => [m.model, m.count]),
     ].map(row => row.join(',')).join('\n');
@@ -1031,8 +1031,8 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Site-wise Issues */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-gray-900 mb-4">Top 5 Sites by Issue Frequency</h3>
-          <ResponsiveContainer width="100%" height={250}>
+          <h3 className="text-gray-900 mb-4">Top 10 Sites by Issue Frequency</h3>
+          <ResponsiveContainer width="100%" height={Math.max(250, sitewiseData.length * 28)}>
             <BarChart data={sitewiseData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
@@ -1045,8 +1045,8 @@ export function Analytics({ currentUser }: AnalyticsProps) {
 
         {/* Model-wise Failures */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-gray-900 mb-4">Top 5 Models by Failure Rate</h3>
-          <ResponsiveContainer width="100%" height={250}>
+          <h3 className="text-gray-900 mb-4">Top 10 Models by Failure Rate</h3>
+          <ResponsiveContainer width="100%" height={Math.max(250, modelwiseData.length * 28)}>
             <BarChart data={modelwiseData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />

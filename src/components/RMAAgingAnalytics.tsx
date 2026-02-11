@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx';
 import { AlertTriangle, Download, Filter, X } from 'lucide-react';
 import { analyticsService, RmaAgingResponse, RmaAgingGroup } from '../services/analytics.service';
+import { rmaService, RMACase } from '../services/rma.service';
+import { toast } from 'sonner';
 
 interface RMAAgingAnalyticsProps {
   currentUser: any;
@@ -153,42 +155,243 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
     filters.selectedSiteNames,
   ]);
 
-  const exportToExcel = useCallback(() => {
+  const exportToCSV = useCallback(async () => {
     if (!data || data.groups.length === 0) return;
 
-    const rows: Record<string, string | number>[] = [];
-
-    data.groups.forEach((group: RmaAgingGroup) => {
-      const partDisplay = group.normalizedPartName || group.partName || group.partNumber || 'Unknown';
-
-      group.repeatPairs.forEach((pair) => {
-        rows.push({
-          'Projector Serial': group.projectorSerial,
-          'Projector Model': group.projectorModel || '',
-          'Site': group.siteName,
-          'Part Name': partDisplay,
-          'Part Number': group.partNumber || '',
-          'Total Cases': group.totalCases,
-          'First RMA / Call Log': pair.firstRmaNumber || pair.firstCallLogNumber || '',
-          'First Date': pair.firstDate,
-          'Second RMA / Call Log': pair.secondRmaNumber || pair.secondCallLogNumber || '',
-          'Second Date': pair.secondDate,
-          'Days Between': pair.daysBetween,
+    try {
+      toast.info('Fetching complete RMA details...');
+      
+      // Collect all unique case IDs
+      const caseIds = new Set<string>();
+      data.groups.forEach((group: RmaAgingGroup) => {
+        group.repeatPairs.forEach((pair) => {
+          caseIds.add(pair.firstCaseId);
+          caseIds.add(pair.secondCaseId);
         });
       });
-    });
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'RMA Aging Results');
+      // Fetch all RMA case details with relations (audi, site)
+      const caseDetailsMap = new Map<string, RMACase>();
+      const fetchPromises = Array.from(caseIds).map(async (caseId) => {
+        try {
+          const response = await rmaService.getRMACaseById(caseId, true); // Include relations
+          if (response.success && response.data?.case) {
+            caseDetailsMap.set(caseId, response.data.case);
+          }
+        } catch (err) {
+          console.error(`Failed to fetch case ${caseId}:`, err);
+        }
+      });
 
-    const dateRange =
-      data.summary.dateRange.from && data.summary.dateRange.to
-        ? `${data.summary.dateRange.from}_to_${data.summary.dateRange.to}`
-        : new Date().toISOString().slice(0, 10);
-    const filename = `rma-aging-results_${dateRange}.xlsx`;
+      await Promise.all(fetchPromises);
+      toast.success('RMA details fetched successfully');
 
-    XLSX.writeFile(workbook, filename);
+      // Build CSV rows with complete RMA details
+      const rows: any[] = [];
+
+      console.log('Export data:', { groups: data.groups.length, firstGroup: data.groups[0] });
+
+      data.groups.forEach((group: RmaAgingGroup) => {
+        group.repeatPairs.forEach((pair) => {
+          const firstCase = caseDetailsMap.get(pair.firstCaseId);
+          const secondCase = caseDetailsMap.get(pair.secondCaseId);
+
+          // Debug log for first group
+          if (rows.length === 0) {
+            console.log('First group:', group);
+            console.log('First case:', firstCase);
+            console.log('First case audi object:', (firstCase as any)?.audi);
+            console.log('First case audiNo:', firstCase?.audiNo);
+            console.log('First case audiId:', firstCase?.audiId);
+            console.log('All case keys:', Object.keys(firstCase || {}));
+          }
+
+          // Add row for first RMA
+          if (firstCase) {
+            // Get site name from multiple sources (check nested objects)
+            const siteName = group.siteName || 
+                           firstCase.siteName || 
+                           ((firstCase as any).site?.siteName) || 
+                           'Unknown Site';
+            
+            // Get Audi Number (check nested audi object)
+            const audiNumber = ((firstCase as any).audi?.audiNo) || 
+                             firstCase.audiNo || 
+                             '';
+
+            rows.push({
+              'Pair Type': 'First',
+              'Days Between Failures': pair.daysBetween,
+              'Related RMA': secondCase?.rmaNumber || secondCase?.callLogNumber || 'N/A',
+              
+              // Basic Info
+              'RMA Type': firstCase.rmaType,
+              'Call Log Number': firstCase.callLogNumber || '',
+              'RMA Number': firstCase.rmaNumber || '',
+              'RMA Order Number': firstCase.rmaOrderNumber || '',
+              
+              // Location - Use group data for site name with fallback
+              'Site Name': siteName,
+              'Audi Number': audiNumber,
+              
+              // Product
+              'Product Name': firstCase.productName,
+              'Product Part Number': firstCase.productPartNumber,
+              'Serial Number': firstCase.serialNumber,
+              'Projector Model': group.projectorModel || '',
+              
+              // Dates
+              'RMA Raised Date': new Date(firstCase.rmaRaisedDate).toLocaleDateString(),
+              'Customer Error Date': new Date(firstCase.customerErrorDate).toLocaleDateString(),
+              'Shipped Date': firstCase.shippedDate ? new Date(firstCase.shippedDate).toLocaleDateString() : '',
+              'Return Shipped Date': firstCase.returnShippedDate ? new Date(firstCase.returnShippedDate).toLocaleDateString() : '',
+              
+              // Defect Info
+              'Defective Part Name': firstCase.defectivePartName || '',
+              'Defective Part Number': firstCase.defectivePartNumber || '',
+              'Defective Part Serial': firstCase.defectivePartSerial || '',
+              'Defect Details': firstCase.defectDetails || '',
+              'Symptoms': firstCase.symptoms || '',
+              'Is DNR': firstCase.isDefectivePartDNR ? 'Yes' : 'No',
+              'DNR Reason': firstCase.defectivePartDNRReason || '',
+              
+              // Replacement
+              'Replaced Part Number': firstCase.replacedPartNumber || '',
+              'Replaced Part Serial': firstCase.replacedPartSerial || '',
+              
+              // Shipping
+              'Shipping Carrier': firstCase.shippingCarrier || '',
+              'Tracking Number Out': firstCase.trackingNumberOut || '',
+              'Return Tracking Number': firstCase.returnTrackingNumber || '',
+              'Return Shipped Through': firstCase.returnShippedThrough || '',
+              
+              // Status & Assignment
+              'Status': firstCase.status,
+              'Assigned To': firstCase.assignedTo || '',
+              'Created By': firstCase.createdBy,
+              
+              // Notes
+              'Notes': firstCase.notes || '',
+            });
+          }
+
+          // Add row for second RMA
+          if (secondCase) {
+            // Get site name from multiple sources (check nested objects)
+            const siteName = group.siteName || 
+                           secondCase.siteName || 
+                           ((secondCase as any).site?.siteName) || 
+                           'Unknown Site';
+            
+            // Get Audi Number (check nested audi object)
+            const audiNumber = ((secondCase as any).audi?.audiNo) || 
+                             secondCase.audiNo || 
+                             '';
+
+            rows.push({
+              'Pair Type': 'Second',
+              'Days Between Failures': pair.daysBetween,
+              'Related RMA': firstCase?.rmaNumber || firstCase?.callLogNumber || 'N/A',
+              
+              // Basic Info
+              'RMA Type': secondCase.rmaType,
+              'Call Log Number': secondCase.callLogNumber || '',
+              'RMA Number': secondCase.rmaNumber || '',
+              'RMA Order Number': secondCase.rmaOrderNumber || '',
+              
+              // Location - Use group data for site name with fallback
+              'Site Name': siteName,
+              'Audi Number': audiNumber,
+              
+              // Product
+              'Product Name': secondCase.productName,
+              'Product Part Number': secondCase.productPartNumber,
+              'Serial Number': secondCase.serialNumber,
+              'Projector Model': group.projectorModel || '',
+              
+              // Dates
+              'RMA Raised Date': new Date(secondCase.rmaRaisedDate).toLocaleDateString(),
+              'Customer Error Date': new Date(secondCase.customerErrorDate).toLocaleDateString(),
+              'Shipped Date': secondCase.shippedDate ? new Date(secondCase.shippedDate).toLocaleDateString() : '',
+              'Return Shipped Date': secondCase.returnShippedDate ? new Date(secondCase.returnShippedDate).toLocaleDateString() : '',
+              
+              // Defect Info
+              'Defective Part Name': secondCase.defectivePartName || '',
+              'Defective Part Number': secondCase.defectivePartNumber || '',
+              'Defective Part Serial': secondCase.defectivePartSerial || '',
+              'Defect Details': secondCase.defectDetails || '',
+              'Symptoms': secondCase.symptoms || '',
+              'Is DNR': secondCase.isDefectivePartDNR ? 'Yes' : 'No',
+              'DNR Reason': secondCase.defectivePartDNRReason || '',
+              
+              // Replacement
+              'Replaced Part Number': secondCase.replacedPartNumber || '',
+              'Replaced Part Serial': secondCase.replacedPartSerial || '',
+              
+              // Shipping
+              'Shipping Carrier': secondCase.shippingCarrier || '',
+              'Tracking Number Out': secondCase.trackingNumberOut || '',
+              'Return Tracking Number': secondCase.returnTrackingNumber || '',
+              'Return Shipped Through': secondCase.returnShippedThrough || '',
+              
+              // Status & Assignment
+              'Status': secondCase.status,
+              'Assigned To': secondCase.assignedTo || '',
+              'Created By': secondCase.createdBy,
+              
+              // Notes
+              'Notes': secondCase.notes || '',
+            });
+          }
+        });
+      });
+
+      // Check if we have data
+      if (rows.length === 0) {
+        toast.error('No data to export');
+        return;
+      }
+
+      console.log('Total rows:', rows.length);
+      console.log('First row sample:', rows[0]);
+
+      // Helper function to escape CSV values
+      const escapeCSV = (value: any): string => {
+        const stringValue = String(value === null || value === undefined ? '' : value);
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+      };
+
+      // Convert to CSV
+      const headers = Object.keys(rows[0]);
+      console.log('CSV Headers:', headers);
+      
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => headers.map(header => escapeCSV(row[header])).join(','))
+      ].join('\n');
+
+      // Download CSV
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const dateRange =
+        data.summary.dateRange.from && data.summary.dateRange.to
+          ? `${data.summary.dateRange.from}_to_${data.summary.dateRange.to}`
+          : new Date().toISOString().slice(0, 10);
+      const filename = `rma-aging-complete_${dateRange}.csv`;
+      
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+
+      toast.success('CSV exported successfully');
+    } catch (error) {
+      console.error('Export failed:', error);
+      toast.error('Failed to export CSV');
+    }
   }, [data]);
 
   return (
@@ -599,11 +802,11 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
             {data.groups.length > 0 && (
               <button
                 type="button"
-                onClick={exportToExcel}
+                onClick={exportToCSV}
                 className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm shrink-0"
               >
                 <Download className="w-4 h-4" />
-                Export to Excel
+                Export to CSV
               </button>
             )}
           </div>

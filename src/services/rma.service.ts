@@ -64,8 +64,9 @@ export const rmaService = {
   },
 
   // Get RMA case by ID
-  async getRMACaseById(id: string) {
-    return await api.get<{ case: RMACase }>(`/rma/${id}`);
+  async getRMACaseById(id: string, includeRelations: boolean = false) {
+    const query = includeRelations ? '?include=audi,site' : '';
+    return await api.get<{ case: RMACase }>(`/rma/${id}${query}`);
   },
 
   // Create RMA case

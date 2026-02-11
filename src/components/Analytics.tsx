@@ -455,30 +455,20 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     { name: 'Lamps', count: rmaCases.filter(r => r.rmaType === 'Lamps').length, color: '#10b981' },
   ];
 
-  // Site-wise issue frequency
-  const siteStats = dtrCases.reduce((acc, dtr) => {
-    const siteName = getSiteName(dtr.site);
+  // Site-wise RMA frequency (Top 20)
+  const rmaSiteStats = rmaCases.reduce((acc, rma) => {
+    const siteName = getSiteName(rma.site || rma.siteName);
     acc[siteName] = (acc[siteName] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
-  const sitewiseData = Object.entries(siteStats)
+  const sitewiseRMAData = Object.entries(rmaSiteStats)
     .map(([site, count]) => ({ site, count: Number(count) }))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+    .slice(0, 20);
 
-  // Model-wise failure patterns
-  const modelStats = dtrCases.reduce((acc, dtr) => {
-    if (dtr.unitModel) {
-      acc[dtr.unitModel] = (acc[dtr.unitModel] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
-
-  const modelwiseData = Object.entries(modelStats)
-    .map(([model, count]) => ({ model: model.substring(0, 20), count: Number(count) }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+  // Second chart: Top 20 Sites by RMA count (same data source as first chart)
+  const sitewiseRMAData2 = sitewiseRMAData; // Both charts use the same Top 20 RMA sites data
 
   // Turnaround time for closed RMAs
   const closedRMAsWithValidDates = rmaCases.filter(r => {
@@ -691,13 +681,13 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       ['Replacement Parts Not Shipped (30+ days)', overdueReplacementShipping.length],
       ['Defective Parts Not Returned (30+ days)', overdueDefectiveReturn.length],
       [],
-      ['Top 10 Sites by Issue Frequency'],
-      ['Site', 'Issue Count'],
-      ...sitewiseData.map(s => [s.site, s.count]),
+      ['Top 20 Sites by RMA Count'],
+      ['Site', 'RMA Count'],
+      ...sitewiseRMAData.map(s => [s.site, s.count]),
       [],
-      ['Top 10 Models by Failure Rate'],
-      ['Model', 'Failure Count'],
-      ...modelwiseData.map(m => [m.model, m.count]),
+      ['Top 20 Sites by RMA Issue Frequency'],
+      ['Site', 'RMA Count'],
+      ...sitewiseRMAData2.map(s => [s.site, s.count]),
     ].map(row => row.join(',')).join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -1029,30 +1019,30 @@ export function Analytics({ currentUser }: AnalyticsProps) {
 
       {/* Charts Row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Site-wise Issues */}
+        {/* Top 20 Sites by RMA Count */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-gray-900 mb-4">Top 10 Sites by Issue Frequency</h3>
-          <ResponsiveContainer width="100%" height={Math.max(250, sitewiseData.length * 28)}>
-            <BarChart data={sitewiseData} layout="vertical">
+          <h3 className="text-gray-900 mb-4">Top 20 Sites by RMA Count</h3>
+          <ResponsiveContainer width="100%" height={Math.max(300, sitewiseRMAData.length * 28)}>
+            <BarChart data={sitewiseRMAData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
-              <YAxis dataKey="site" type="category" width={150} />
+              <YAxis dataKey="site" type="category" width={180} />
               <Tooltip />
-              <Bar dataKey="count" fill="#3b82f6" />
+              <Bar dataKey="count" fill="#8b5cf6" />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Model-wise Failures */}
+        {/* Top 20 Sites by RMA Issue Frequency (duplicate for emphasis) */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-gray-900 mb-4">Top 10 Models by Failure Rate</h3>
-          <ResponsiveContainer width="100%" height={Math.max(250, modelwiseData.length * 28)}>
-            <BarChart data={modelwiseData} layout="vertical">
+          <h3 className="text-gray-900 mb-4">Top 20 Sites by RMA Issue Frequency</h3>
+          <ResponsiveContainer width="100%" height={Math.max(300, sitewiseRMAData2.length * 28)}>
+            <BarChart data={sitewiseRMAData2} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
-              <YAxis dataKey="model" type="category" width={150} />
+              <YAxis dataKey="site" type="category" width={180} />
               <Tooltip />
-              <Bar dataKey="count" fill="#f59e0b" />
+              <Bar dataKey="count" fill="#3b82f6" />
             </BarChart>
           </ResponsiveContainer>
         </div>

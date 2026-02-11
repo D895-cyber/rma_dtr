@@ -467,9 +467,6 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     .sort((a, b) => b.count - a.count)
     .slice(0, 20);
 
-  // Second chart: Top 20 Sites by RMA count (same data source as first chart)
-  const sitewiseRMAData2 = sitewiseRMAData; // Both charts use the same Top 20 RMA sites data
-
   // Turnaround time for closed RMAs
   const closedRMAsWithValidDates = rmaCases.filter(r => {
     if (r.status !== 'closed' || !r.shippedDate || !r.rmaRaisedDate) return false;
@@ -684,10 +681,6 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       ['Top 20 Sites by RMA Count'],
       ['Site', 'RMA Count'],
       ...sitewiseRMAData.map(s => [s.site, s.count]),
-      [],
-      ['Top 20 Sites by RMA Issue Frequency'],
-      ['Site', 'RMA Count'],
-      ...sitewiseRMAData2.map(s => [s.site, s.count]),
     ].map(row => row.join(',')).join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -1018,31 +1011,23 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       </div>
 
       {/* Charts Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         {/* Top 20 Sites by RMA Count */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h3 className="text-gray-900 mb-4">Top 20 Sites by RMA Count</h3>
-          <ResponsiveContainer width="100%" height={Math.max(300, sitewiseRMAData.length * 28)}>
-            <BarChart data={sitewiseRMAData} layout="vertical">
+          <ResponsiveContainer width="100%" height={Math.max(400, sitewiseRMAData.length * 35)}>
+            <BarChart data={sitewiseRMAData} layout="vertical" margin={{ left: 20 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
-              <YAxis dataKey="site" type="category" width={180} />
+              <YAxis 
+                dataKey="site" 
+                type="category" 
+                width={280} 
+                tick={{ fontSize: 12 }}
+                interval={0}
+              />
               <Tooltip />
               <Bar dataKey="count" fill="#8b5cf6" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Top 20 Sites by RMA Issue Frequency (duplicate for emphasis) */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-gray-900 mb-4">Top 20 Sites by RMA Issue Frequency</h3>
-          <ResponsiveContainer width="100%" height={Math.max(300, sitewiseRMAData2.length * 28)}>
-            <BarChart data={sitewiseRMAData2} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" />
-              <YAxis dataKey="site" type="category" width={180} />
-              <Tooltip />
-              <Bar dataKey="count" fill="#3b82f6" />
             </BarChart>
           </ResponsiveContainer>
         </div>

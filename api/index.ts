@@ -24,6 +24,7 @@ import dtrRoutes from '../backend/dist/routes/dtr.routes';
 import rmaRoutes from '../backend/dist/routes/rma.routes';
 import notificationRoutes from '../backend/dist/routes/notification.routes';
 import analyticsRoutes from '../backend/dist/routes/analytics.routes';
+import syncRoutes from '../backend/dist/routes/sync.routes';
 import attachmentRoutes from '../backend/dist/routes/attachment.routes';
 import notificationPreferenceRoutes from '../backend/dist/routes/notificationPreference.routes';
 import templateRoutes from '../backend/dist/routes/template.routes';
@@ -129,6 +130,7 @@ app.use('/api/searches', searchRoutes);
 app.use('/api/rules', ruleRoutes);
 app.use('/api/attachments', attachmentRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/sync', syncRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

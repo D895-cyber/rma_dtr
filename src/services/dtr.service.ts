@@ -20,6 +20,8 @@ export interface DTRCase {
   createdBy: string;
   createdDate: string;
   assignedTo?: string;
+  // Populated by backend include/select in some responses
+  assignee?: { id: string; name?: string; email?: string };
   closedBy?: string;
   closedDate?: string;
   finalRemarks?: string;

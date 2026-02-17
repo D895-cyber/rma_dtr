@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FileText, Package, AlertCircle, CheckCircle, Clock, TrendingUp, LayoutGrid, X } from 'lucide-react';
 import { analyticsService } from '../services/analytics.service';
 import { useDashboardLayout, DASHBOARD_WIDGET_IDS, WIDGET_LABELS, type DashboardWidgetId } from '../hooks/useDashboardLayout';
+import api from '../services/api';
 
 interface DashboardProps {
   currentUser: any;
@@ -30,6 +31,15 @@ export function Dashboard({ currentUser }: DashboardProps) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [lastSyncBy, setLastSyncBy] = useState<string | null>(null);
+  const [lastSyncTimeMs, setLastSyncTimeMs] = useState<number | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncModalIsError, setSyncModalIsError] = useState(false);
+  const [syncModalText, setSyncModalText] = useState<string | null>(null);
   const { visibleOrder, layout, setEnabled } = useDashboardLayout(currentUser?.id || '');
 
   // Helper function to get site name
@@ -55,6 +65,76 @@ export function Dashboard({ currentUser }: DashboardProps) {
       console.error('Failed to load dashboard stats:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const isAdminOrManager = (() => {
+    const role = (currentUser?.role || '').toString().toLowerCase();
+    return role === 'admin' || role === 'manager';
+  })();
+
+  const handleSyncGoogleSheet = async () => {
+    if (!isAdminOrManager || syncing) return;
+
+    // Prevent accidental double-sync: warn if last sync was less than 60 seconds ago
+    if (lastSyncTimeMs && Date.now() - lastSyncTimeMs < 60_000) {
+      const confirmAgain = window.confirm(
+        'You just synced less than a minute ago. Do you want to sync again?'
+      );
+      if (!confirmAgain) return;
+    }
+
+    setSyncing(true);
+    setSyncMessage(null);
+    setSyncError(null);
+    setSyncModalOpen(false);
+    setSyncModalText(null);
+    try {
+      const response = await api.post<{
+        rmaRows: number;
+        dtrRows: number;
+        spreadsheetId: string;
+        syncedAt?: string;
+        syncedBy?: { email: string; role: string } | null;
+      }>('/sync/google-sheet');
+
+      if (response.success && response.data) {
+        const syncedAt = response.data.syncedAt || new Date().toISOString();
+        const syncedBy =
+          response.data.syncedBy?.email ||
+          (currentUser?.email as string | undefined) ||
+          null;
+
+        setLastSyncAt(syncedAt);
+        setLastSyncBy(syncedBy);
+        setLastSyncTimeMs(Date.now());
+
+        const successText = `Synced to Google Sheet\n\nRMA rows: ${response.data.rmaRows}\nDTR rows: ${response.data.dtrRows}\nSheet ID: ${response.data.spreadsheetId}\nSynced at: ${new Date(
+          syncedAt
+        ).toLocaleString()}\nSynced by: ${syncedBy || 'Unknown'}`;
+
+        setSyncMessage('Google Sheet sync completed.');
+        setSyncError(null);
+        setSyncModalIsError(false);
+        setSyncModalText(successText);
+        setSyncModalOpen(true);
+      } else {
+        const errorText =
+          response.message || 'Failed to sync to Google Sheet (unknown error).';
+        setSyncError(errorText);
+        setSyncModalIsError(true);
+        setSyncModalText(errorText);
+        setSyncModalOpen(true);
+      }
+    } catch (error) {
+      console.error('Failed to sync Google Sheet:', error);
+      const errorText = 'Failed to sync to Google Sheet.';
+      setSyncError(errorText);
+      setSyncModalIsError(true);
+      setSyncModalText(errorText);
+      setSyncModalOpen(true);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -90,6 +170,9 @@ export function Dashboard({ currentUser }: DashboardProps) {
   const recentRMA = stats.rma.recentCases || [];
   const overdueRMA = (stats.rma as any).overdueCases || [];
 
+  const recentlySynced =
+    lastSyncTimeMs != null && Date.now() - lastSyncTimeMs < 60_000;
+
   return (
     <div className="space-y-8 w-full max-w-full">
       {/* Welcome Section */}
@@ -98,16 +181,101 @@ export function Dashboard({ currentUser }: DashboardProps) {
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 tracking-tight">Welcome back, {currentUser.name}!</h2>
           <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">Here&apos;s what needs attention today.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setCustomizeOpen(true)}
-          className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
-          title="Customize dashboard"
-        >
-          <LayoutGrid className="w-4 h-4 shrink-0" />
-          Customize
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          {isAdminOrManager && lastSyncAt && (
+            <div className="text-xs text-gray-500 dark:text-gray-400 text-right">
+              <div>
+                Last synced at:{' '}
+                <span className="font-medium">
+                  {new Date(lastSyncAt).toLocaleString()}
+                </span>
+              </div>
+              {lastSyncBy && (
+                <div>
+                  By:{' '}
+                  <span className="font-medium break-all">{lastSyncBy}</span>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex items-center gap-3">
+          {isAdminOrManager && (
+            <button
+              type="button"
+              onClick={handleSyncGoogleSheet}
+              disabled={syncing}
+              className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 shadow-sm"
+              title="Sync latest RMA and DTR data to Google Sheet"
+            >
+              {syncing ? (
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <TrendingUp className="w-4 h-4 shrink-0" />
+              )}
+              {syncing ? 'Syncing...' : 'Sync to Google Sheet'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setCustomizeOpen(true)}
+            className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
+            title="Customize dashboard"
+          >
+            <LayoutGrid className="w-4 h-4 shrink-0" />
+            Customize
+          </button>
+          </div>
+        </div>
       </div>
+
+      {isAdminOrManager && (syncMessage || syncError) && (
+        <div
+          className={`px-4 py-2.5 rounded-lg text-sm ${
+            syncError
+              ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-900/20 dark:text-red-200 dark:border-red-700'
+              : 'bg-green-50 text-green-700 border border-green-200 dark:bg-green-900/20 dark:text-green-200 dark:border-green-700'
+          }`}
+        >
+          {syncError || syncMessage}
+        </div>
+      )}
+
+      {syncModalOpen && syncModalText && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setSyncModalOpen(false)}
+            aria-hidden
+          />
+          <div className="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                {syncModalIsError ? 'Google Sheet Sync Failed' : 'Google Sheet Sync Details'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSyncModalOpen(false)}
+                className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <pre className="text-xs whitespace-pre-wrap break-words text-gray-800 dark:text-gray-100 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-lg p-3 max-h-64 overflow-auto">
+              {syncModalText}
+            </pre>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSyncModalOpen(false)}
+                className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Widgets in user order */}
       {visibleOrder.includes('dtr-stats') && (

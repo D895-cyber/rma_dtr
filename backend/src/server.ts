@@ -22,6 +22,7 @@ import searchRoutes from './routes/search.routes';
 import ruleRoutes from './routes/rule.routes';
 import attachmentRoutes from './routes/attachment.routes';
 import partNameAliasRoutes from './routes/partNameAlias.routes';
+import syncRoutes from './routes/sync.routes';
 
 // Import middleware
 import { errorHandler } from './middleware/error.middleware';
@@ -107,6 +108,7 @@ app.use('/api/rules', ruleRoutes);
 app.use('/api/attachments', attachmentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/part-name-aliases', partNameAliasRoutes);
+app.use('/api/sync', syncRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

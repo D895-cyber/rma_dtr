@@ -228,6 +228,12 @@ export function DTRList({ currentUser, openCaseId, onOpenCaseHandled }: DTRListP
           const result = await createCase(data);
           if (result.success) {
             setShowForm(false);
+            // Refresh list with current filters so new case appears without manual refresh
+            const filters: Record<string, string> = {};
+            if (statusFilter !== 'all') filters.status = statusFilter;
+            if (severityFilter !== 'all') filters.severity = severityFilter;
+            if (debouncedSearchTerm) filters.search = debouncedSearchTerm;
+            await loadCases(filters);
           } else {
             alert(result.message || 'Failed to create DTR case');
           }

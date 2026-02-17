@@ -6,6 +6,8 @@ import { FileUpload } from './FileUpload';
 import { AttachmentList } from './AttachmentList';
 import { CaseTimeline } from './CaseTimeline';
 import { CasePresence } from './CasePresence';
+import { ProtectedComponent } from './ProtectedComponent';
+import { usePermissions } from '../hooks/usePermissions';
 
 interface RMADetailProps {
   rma: RMACase;
@@ -17,6 +19,9 @@ interface RMADetailProps {
 export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProps) {
   const { getEngineersList, users } = useUsersAPI();
   const engineers = getEngineersList();
+  const { can } = usePermissions();
+  const canUpdateRma = can('rma:update');
+  const canEmailClient = can('rma:email_client');
   
   // Helper function to safely get audi number
   const getAudiNo = (data: any): string => {
@@ -292,24 +297,28 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
             >
               <History className="w-5 h-5" />
             </button>
-            {!isEditing && (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                aria-label="Edit"
-              >
-                <Edit className="w-5 h-5" />
-              </button>
-            )}
+            <ProtectedComponent permission="rma:update">
+              {!isEditing && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                  aria-label="Edit"
+                >
+                  <Edit className="w-5 h-5" />
+                </button>
+              )}
+            </ProtectedComponent>
             {/* Email client button */}
-            <button
-              onClick={handleSendClientEmail}
-              disabled={sendingClientEmail || !clientEmail}
-              className="hidden md:inline-flex items-center gap-1 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-            >
-              <Mail className="w-4 h-4" />
-              {sendingClientEmail ? 'Sending…' : 'Email Client'}
-            </button>
+            <ProtectedComponent permission="rma:email_client">
+              <button
+                onClick={handleSendClientEmail}
+                disabled={!canEmailClient || sendingClientEmail || !clientEmail}
+                className="hidden md:inline-flex items-center gap-1 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+              >
+                <Mail className="w-4 h-4" />
+                {sendingClientEmail ? 'Sending…' : 'Email Client'}
+              </button>
+            </ProtectedComponent>
             <button
               onClick={onClose}
               className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
@@ -462,30 +471,32 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
           </div>
 
           {/* Client email for notifications */}
-          <div className="md:col-span-2">
-            <label className="block text-sm text-gray-700 mb-2">Client Email for RMA Updates</label>
-            <div className="flex flex-col md:flex-row gap-2">
-              <input
-                type="email"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-                placeholder="customer@example.com"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                type="button"
-                onClick={handleSendClientEmail}
-                disabled={sendingClientEmail || !clientEmail}
-                className="inline-flex items-center justify-center gap-1 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Mail className="w-4 h-4" />
-                {sendingClientEmail ? 'Sending…' : 'Send Email to Client'}
-              </button>
+          <ProtectedComponent permission="rma:email_client">
+            <div className="md:col-span-2">
+              <label className="block text-sm text-gray-700 mb-2">Client Email for RMA Updates</label>
+              <div className="flex flex-col md:flex-row gap-2">
+                <input
+                  type="email"
+                  value={clientEmail}
+                  onChange={(e) => setClientEmail(e.target.value)}
+                  placeholder="customer@example.com"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleSendClientEmail}
+                  disabled={!canEmailClient || sendingClientEmail || !clientEmail}
+                  className="inline-flex items-center justify-center gap-1 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Mail className="w-4 h-4" />
+                  {sendingClientEmail ? 'Sending…' : 'Send Email to Client'}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Email will include this RMA&apos;s shipment/docket details (carrier and tracking numbers) from the fields below.
+              </p>
             </div>
-            <p className="mt-1 text-xs text-gray-500">
-              Email will include this RMA&apos;s shipment/docket details (carrier and tracking numbers) from the fields below.
-            </p>
-          </div>
+          </ProtectedComponent>
 
           <div>
             <label className="block text-sm text-gray-700 mb-2">Call Log # (DTR)</label>
@@ -568,13 +579,16 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
               {/* Save button appears when assignment changes */}
               {assignmentHasChanged && (
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleSaveAssignment}
-                    className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
-                  >
-                    <Check className="w-4 h-4" />
-                    Save Assignment
-                  </button>
+                  <ProtectedComponent permission="rma:update">
+                    <button
+                      onClick={handleSaveAssignment}
+                      disabled={!canUpdateRma}
+                      className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Check className="w-4 h-4" />
+                      Save Assignment
+                    </button>
+                  </ProtectedComponent>
                   <button
                     onClick={() => {
                       setFormData({
@@ -726,7 +740,9 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
                 type="checkbox"
                 id="isDefectivePartDNR"
                 checked={formData.isDefectivePartDNR === true}
+                disabled={!canUpdateRma}
                 onChange={(e) => {
+                  if (!canUpdateRma) return;
                   const newValue = e.target.checked;
                   setFormData({ 
                     ...formData, 
@@ -747,13 +763,16 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
                 {/* Save button appears when DNR value changes */}
                 {dnrHasChanged && (
                   <div className="mt-3 flex items-center gap-2">
-                    <button
-                      onClick={handleSaveDNR}
-                      className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
-                    >
-                      <Check className="w-4 h-4" />
-                      Save DNR Status
-                    </button>
+                    <ProtectedComponent permission="rma:update">
+                      <button
+                        onClick={handleSaveDNR}
+                        disabled={!canUpdateRma}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Check className="w-4 h-4" />
+                        Save DNR Status
+                      </button>
+                    </ProtectedComponent>
                     <button
                       onClick={() => {
                         setFormData({
@@ -780,6 +799,7 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
               <textarea
                 value={formData.defectivePartDNRReason || ''}
                 onChange={(e) => setFormData({ ...formData, defectivePartDNRReason: e.target.value })}
+                disabled={!canUpdateRma}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 rows={2}
                 placeholder="Explain why the defective part will not be returned (e.g., Part damaged beyond repair and disposed at site per safety protocol)..."
@@ -928,13 +948,16 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
             >
               Cancel
             </button>
-            <button
-              onClick={handleUpdate}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Check className="w-4 h-4" />
-              Save Changes
-            </button>
+            <ProtectedComponent permission="rma:update">
+              <button
+                onClick={handleUpdate}
+                disabled={!canUpdateRma}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Check className="w-4 h-4" />
+                Save Changes
+              </button>
+            </ProtectedComponent>
           </div>
         )}
 
@@ -942,12 +965,16 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
         <div className="bg-white rounded-lg border border-gray-200 p-6 mt-6">
           <h3 className="text-gray-900 mb-4">Attachments</h3>
           <div className="space-y-4">
-            <FileUpload
-              caseId={rma.id}
-              caseType="RMA"
-              onUploadComplete={() => setRefreshAttachments(prev => prev + 1)}
-            />
-            <AttachmentList key={refreshAttachments} caseId={rma.id} caseType="RMA" />
+            <ProtectedComponent permission="rma:update">
+              <FileUpload
+                caseId={rma.id}
+                caseType="RMA"
+                onUploadComplete={() => setRefreshAttachments(prev => prev + 1)}
+              />
+            </ProtectedComponent>
+            <div key={refreshAttachments}>
+              <AttachmentList caseId={rma.id} caseType="RMA" />
+            </div>
           </div>
         </div>
         </div>

@@ -5,6 +5,7 @@ import { dtrService } from '../services/dtr.service';
 import { FileUpload } from './FileUpload';
 import { AttachmentList } from './AttachmentList';
 import { CaseTimeline } from './CaseTimeline';
+import { ProtectedComponent } from './ProtectedComponent';
 
 interface DTRDetailProps {
   dtr: DTRCase;
@@ -241,15 +242,17 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
             >
               <History className="w-5 h-5" />
             </button>
-            {!isEditing && (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                aria-label="Edit"
-              >
-                <Edit className="w-5 h-5" />
-              </button>
-            )}
+            <ProtectedComponent permission="dtr:update">
+              {!isEditing && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                  aria-label="Edit"
+                >
+                  <Edit className="w-5 h-5" />
+                </button>
+              )}
+            </ProtectedComponent>
             <button
               onClick={onClose}
               className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
@@ -264,29 +267,35 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
         <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-200">
           {dtr.callStatus !== 'closed' && (
             <>
-              <button
-                onClick={() => handleStatusChange('in-progress')}
-                className="px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-                disabled={dtr.callStatus === 'in-progress'}
-              >
-                Start Work
-              </button>
-              <button
-                onClick={() => handleStatusChange('closed')}
-                className="px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
-              >
-                Close Case
-              </button>
-              <button
-                onClick={handleEscalateToRMA}
-                className="px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors"
-                disabled={dtr.callStatus === 'escalated'}
-              >
-                <div className="flex items-center gap-1">
-                  Escalate to RMA
-                  <ArrowRight className="w-3 h-3" />
-                </div>
-              </button>
+              <ProtectedComponent permission="dtr:update">
+                <button
+                  onClick={() => handleStatusChange('in-progress')}
+                  className="px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                  disabled={dtr.callStatus === 'in-progress'}
+                >
+                  Start Work
+                </button>
+              </ProtectedComponent>
+              <ProtectedComponent permission="dtr:update">
+                <button
+                  onClick={() => handleStatusChange('closed')}
+                  className="px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
+                >
+                  Close Case
+                </button>
+              </ProtectedComponent>
+              <ProtectedComponent permissions={['dtr:update', 'rma:create']} requireAll={true}>
+                <button
+                  onClick={handleEscalateToRMA}
+                  className="px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors"
+                  disabled={dtr.callStatus === 'escalated'}
+                >
+                  <div className="flex items-center gap-1">
+                    Escalate to RMA
+                    <ArrowRight className="w-3 h-3" />
+                  </div>
+                </button>
+              </ProtectedComponent>
             </>
           )}
         </div>
@@ -508,12 +517,16 @@ export function DTRDetail({ dtr, currentUser, onClose, onUpdate }: DTRDetailProp
           <div className="bg-white rounded-lg border border-gray-200 p-6 mt-6">
             <h3 className="text-gray-900 mb-4">Attachments</h3>
             <div className="space-y-4">
-              <FileUpload
-                caseId={dtr.id}
-                caseType="DTR"
-                onUploadComplete={() => setRefreshAttachments(prev => prev + 1)}
-              />
-              <AttachmentList key={refreshAttachments} caseId={dtr.id} caseType="DTR" />
+              <ProtectedComponent permission="dtr:update">
+                <FileUpload
+                  caseId={dtr.id}
+                  caseType="DTR"
+                  onUploadComplete={() => setRefreshAttachments(prev => prev + 1)}
+                />
+              </ProtectedComponent>
+              <div key={refreshAttachments}>
+                <AttachmentList caseId={dtr.id} caseType="DTR" />
+              </div>
             </div>
           </div>
         </div>

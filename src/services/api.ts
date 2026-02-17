@@ -3,8 +3,9 @@
 // Auto-detect API URL for production
 const getApiBaseUrl = () => {
   // Use environment variable if set
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+  const viteApiUrl = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
+  if (viteApiUrl) {
+    return viteApiUrl;
   }
   
   // Auto-detect for production (same origin)
@@ -84,10 +85,9 @@ export async function apiRequest<T = any>(
 
     // Handle 403 (Forbidden) - invalid token
     if (response.status === 403) {
-      removeAuthToken();
       return {
         success: false,
-        message: 'Invalid or expired token',
+        message: 'Forbidden: insufficient permissions',
         error: 'Forbidden',
       };
     }

@@ -8,6 +8,7 @@ import { userService, User } from '../services/user.service';
 import { notificationService, Notification } from '../services/notification.service';
 import { partsService, Part } from '../services/parts.service';
 import { analyticsService } from '../services/analytics.service';
+import { useAuth } from '../contexts/AuthContext';
 
 // Export types
 export type { DTRCase, RMACase, Site, Audi, Projector, ProjectorModel, User, Notification, Part };
@@ -275,16 +276,28 @@ export function useMasterDataAPI() {
 export function useUsersAPI() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
+
+  // Backend `/api/users` requires `users:view` (manager/admin only)
+  const canViewUsers = !!user && (user.role === 'manager' || user.role === 'admin');
 
   const loadUsers = useCallback(async () => {
+    if (!canViewUsers) {
+      setUsers([]);
+      return;
+    }
     const response = await userService.getAllUsers();
     if (response.success && response.data) {
       setUsers(response.data.users || []);
     }
-  }, []);
+  }, [canViewUsers]);
 
   useEffect(() => {
-    loadUsers();
+    if (canViewUsers) {
+      loadUsers();
+    } else {
+      setUsers([]);
+    }
   }, [loadUsers]);
 
   const getEngineersList = () => {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { AlertTriangle, Download, Filter, X } from 'lucide-react';
+import { stripSerialSuffix } from '../utils/serialNumber';
 import { analyticsService, RmaAgingResponse, RmaAgingGroup } from '../services/analytics.service';
 import { rmaService, RMACase } from '../services/rma.service';
 import { toast } from 'sonner';
@@ -75,9 +76,11 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
   const filteredSerialOptions = useMemo(() => {
     const q = searchInputs.serialNumber.trim().toLowerCase();
     if (!q) return [];
-    return filterOptions.serialNumbers
-      .filter(sn => sn.toLowerCase().includes(q))
+    const stripped: string[] = filterOptions.serialNumbers.map(sn => stripSerialSuffix(sn));
+    const uniqueStripped = Array.from(new Set(stripped))
+      .filter((display) => (display || '').toLowerCase().includes(q))
       .slice(0, 10);
+    return uniqueStripped;
   }, [filterOptions.serialNumbers, searchInputs.serialNumber]);
 
   const filteredPartOptions = useMemo(() => {
@@ -222,12 +225,12 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
             rows.push({
               'Pair Type': 'First',
               'Days Between Failures': pair.daysBetween,
-              'Related RMA': secondCase?.rmaNumber || secondCase?.callLogNumber || 'N/A',
+              'Related RMA': stripSerialSuffix(secondCase?.rmaNumber || secondCase?.callLogNumber) || 'N/A',
               
               // Basic Info
               'RMA Type': firstCase.rmaType,
-              'Call Log Number': firstCase.callLogNumber || '',
-              'RMA Number': firstCase.rmaNumber || '',
+              'Call Log Number': stripSerialSuffix(firstCase.callLogNumber) || '',
+              'RMA Number': stripSerialSuffix(firstCase.rmaNumber) || '',
               'RMA Order Number': firstCase.rmaOrderNumber || '',
               
               // Location - Use group data for site name with fallback
@@ -237,7 +240,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
               // Product
               'Product Name': firstCase.productName,
               'Product Part Number': firstCase.productPartNumber,
-              'Serial Number': firstCase.serialNumber,
+              'Serial Number': stripSerialSuffix(firstCase.serialNumber),
               'Projector Model': group.projectorModel || '',
               
               // Dates
@@ -249,7 +252,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
               // Defect Info
               'Defective Part Name': firstCase.defectivePartName || '',
               'Defective Part Number': firstCase.defectivePartNumber || '',
-              'Defective Part Serial': firstCase.defectivePartSerial || '',
+              'Defective Part Serial': stripSerialSuffix(firstCase.defectivePartSerial) || '',
               'Defect Details': firstCase.defectDetails || '',
               'Symptoms': firstCase.symptoms || '',
               'Is DNR': firstCase.isDefectivePartDNR ? 'Yes' : 'No',
@@ -257,7 +260,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
               
               // Replacement
               'Replaced Part Number': firstCase.replacedPartNumber || '',
-              'Replaced Part Serial': firstCase.replacedPartSerial || '',
+              'Replaced Part Serial': stripSerialSuffix(firstCase.replacedPartSerial) || '',
               
               // Shipping
               'Shipping Carrier': firstCase.shippingCarrier || '',
@@ -291,12 +294,12 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
             rows.push({
               'Pair Type': 'Second',
               'Days Between Failures': pair.daysBetween,
-              'Related RMA': firstCase?.rmaNumber || firstCase?.callLogNumber || 'N/A',
+              'Related RMA': stripSerialSuffix(firstCase?.rmaNumber || firstCase?.callLogNumber) || 'N/A',
               
               // Basic Info
               'RMA Type': secondCase.rmaType,
-              'Call Log Number': secondCase.callLogNumber || '',
-              'RMA Number': secondCase.rmaNumber || '',
+              'Call Log Number': stripSerialSuffix(secondCase.callLogNumber) || '',
+              'RMA Number': stripSerialSuffix(secondCase.rmaNumber) || '',
               'RMA Order Number': secondCase.rmaOrderNumber || '',
               
               // Location - Use group data for site name with fallback
@@ -306,7 +309,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
               // Product
               'Product Name': secondCase.productName,
               'Product Part Number': secondCase.productPartNumber,
-              'Serial Number': secondCase.serialNumber,
+              'Serial Number': stripSerialSuffix(secondCase.serialNumber),
               'Projector Model': group.projectorModel || '',
               
               // Dates
@@ -318,7 +321,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
               // Defect Info
               'Defective Part Name': secondCase.defectivePartName || '',
               'Defective Part Number': secondCase.defectivePartNumber || '',
-              'Defective Part Serial': secondCase.defectivePartSerial || '',
+              'Defective Part Serial': stripSerialSuffix(secondCase.defectivePartSerial) || '',
               'Defect Details': secondCase.defectDetails || '',
               'Symptoms': secondCase.symptoms || '',
               'Is DNR': secondCase.isDefectivePartDNR ? 'Yes' : 'No',
@@ -326,7 +329,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
               
               // Replacement
               'Replaced Part Number': secondCase.replacedPartNumber || '',
-              'Replaced Part Serial': secondCase.replacedPartSerial || '',
+              'Replaced Part Serial': stripSerialSuffix(secondCase.replacedPartSerial) || '',
               
               // Shipping
               'Shipping Carrier': secondCase.shippingCarrier || '',
@@ -525,8 +528,8 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                   onFocus={() => setActiveDropdown('serial')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && searchInputs.serialNumber.trim()) {
-                      const value = searchInputs.serialNumber.trim();
-                      if (!filters.selectedSerialNumbers.includes(value)) {
+                      const value = stripSerialSuffix(searchInputs.serialNumber.trim());
+                      if (value && !filters.selectedSerialNumbers.includes(value)) {
                         setFilters(prev => ({
                           ...prev,
                           selectedSerialNumbers: [...prev.selectedSerialNumbers, value],
@@ -542,14 +545,14 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                 {activeDropdown === 'serial' && searchInputs.serialNumber && (
                   <div className="mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
                     {filteredSerialOptions.length > 0 ? (
-                      filteredSerialOptions.map((sn) => (
+                      filteredSerialOptions.map((displaySn) => (
                         <div
-                          key={sn}
+                          key={displaySn}
                           onClick={() => {
-                            if (!filters.selectedSerialNumbers.includes(sn)) {
+                            if (!filters.selectedSerialNumbers.includes(displaySn)) {
                               setFilters(prev => ({
                                 ...prev,
-                                selectedSerialNumbers: [...prev.selectedSerialNumbers, sn],
+                                selectedSerialNumbers: [...prev.selectedSerialNumbers, displaySn],
                               }));
                             }
                             setSearchInputs(prev => ({ ...prev, serialNumber: '' }));
@@ -557,7 +560,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                           }}
                           className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-700 transition-colors"
                         >
-                          {sn}
+                          {displaySn}
                         </div>
                       ))
                     ) : (
@@ -573,7 +576,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                       key={sn}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-medium border border-blue-200"
                     >
-                      {sn}
+                      {stripSerialSuffix(sn)}
                       <button
                         onClick={() => {
                           setFilters(prev => ({
@@ -838,7 +841,7 @@ export function RMAAgingAnalytics({ currentUser }: RMAAgingAnalyticsProps) {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="font-semibold text-gray-900">
-                      Projector: {group.projectorSerial}
+                      Projector: {stripSerialSuffix(group.projectorSerial)}
                     </h3>
                     {group.projectorModel && (
                       <span className="text-xs text-gray-500">({group.projectorModel})</span>

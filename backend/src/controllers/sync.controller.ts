@@ -8,6 +8,7 @@ import {
   writeSheet,
   isGoogleSheetsConfigured,
 } from '../services/googleSheets.service';
+import { stripSerialSuffix } from '../utils/serialNumber.util';
 
 const MAX_ROWS_PER_SHEET = 5000;
 const SHEET_NAMES = ['RMA Cases', 'DTR Cases'];
@@ -100,8 +101,8 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
     for (const c of rmaCases) {
       rmaRows.push([
         c.id,
-        safeStr(c.callLogNumber),
-        safeStr(c.rmaNumber),
+        stripSerialSuffix(safeStr(c.callLogNumber)),
+        stripSerialSuffix(safeStr(c.rmaNumber)),
         safeStr(c.rmaOrderNumber),
         c.rmaType,
         c.status,
@@ -111,15 +112,15 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
         c.audi?.audiNo ?? '',
         c.productName,
         c.productPartNumber,
-        c.serialNumber,
+        stripSerialSuffix(c.serialNumber),
         safeStr(c.defectDetails),
         safeStr(c.defectivePartName),
         safeStr(c.defectivePartNumber),
-        safeStr(c.defectivePartSerial),
+        stripSerialSuffix(safeStr(c.defectivePartSerial)),
         safeStr(c.isDefectivePartDNR),
         safeStr(c.defectivePartDNRReason),
         safeStr(c.replacedPartNumber),
-        safeStr(c.replacedPartSerial),
+        stripSerialSuffix(safeStr(c.replacedPartSerial)),
         safeStr(c.symptoms),
         safeStr(c.shippingCarrier),
         safeStr(c.trackingNumberOut),
@@ -167,11 +168,11 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
     for (const c of dtrCases) {
       dtrRows.push([
         c.id,
-        c.caseNumber,
+        stripSerialSuffix(c.caseNumber),
         formatDate(c.errorDate),
         c.site?.siteName ?? '',
         c.unitModel,
-        c.unitSerial,
+        stripSerialSuffix(c.unitSerial),
         safeStr(c.natureOfProblem),
         c.callStatus,
         c.caseSeverity,

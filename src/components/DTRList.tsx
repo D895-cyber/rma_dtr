@@ -6,6 +6,7 @@ import { DTRDetail } from './DTRDetail';
 import { ProtectedComponent } from './ProtectedComponent';
 import { usePermissions } from '../hooks/usePermissions';
 import { useFieldMode } from '../contexts/FieldModeContext';
+import { stripSerialSuffix } from '../utils/serialNumber';
 
 interface DTRListProps {
   currentUser: any;
@@ -164,7 +165,7 @@ export function DTRList({ currentUser, openCaseId, onOpenCaseHandled }: DTRListP
         getSiteName(dtr.site),
         dtr.audi?.audiNo || dtr.audiNo || '-',
         dtr.unitModel,
-        dtr.unitSerial,
+        stripSerialSuffix(dtr.unitSerial),
         `"${dtr.natureOfProblem}"`,
         dtr.callStatus,
         dtr.caseSeverity,
@@ -441,7 +442,7 @@ export function DTRList({ currentUser, openCaseId, onOpenCaseHandled }: DTRListP
                   <td className="px-6 py-4">
                     <div className="text-sm">
                       <div className="text-gray-900 dark:text-white">{dtr.unitModel}</div>
-                      <div className="text-gray-500 dark:text-gray-400 text-xs">{dtr.unitSerial}</div>
+                      <div className="text-gray-500 dark:text-gray-400 text-xs">{stripSerialSuffix(dtr.unitSerial)}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4 max-w-xs">

@@ -6,6 +6,7 @@ import { dtrService } from '../services/dtr.service';
 import { rmaService } from '../services/rma.service';
 import api from '../services/api';
 import * as XLSX from 'xlsx';
+import { stripSerialSuffix } from '../utils/serialNumber';
 
 interface AnalyticsProps {
   currentUser: any;
@@ -535,7 +536,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       // Sheet 1: Summary - Top 20 Projectors
       const summaryData = topProjectors.map((projector) => ({
         'Rank': projector.rank,
-        'Projector Serial Number': projector.serialNumber,
+        'Projector Serial Number': stripSerialSuffix(projector.serialNumber),
         'Model Name': projector.modelName || '-',
         'Site Name': projector.siteName || '-',
         'Audi No': projector.audiNo || '-',
@@ -549,12 +550,12 @@ export function Analytics({ currentUser }: AnalyticsProps) {
         if (projector.rmaCases && projector.rmaCases.length > 0) {
           projector.rmaCases.forEach((rma: any) => {
             detailedData.push({
-              'Projector Serial Number': projector.serialNumber,
+              'Projector Serial Number': stripSerialSuffix(projector.serialNumber),
               'Model Name': projector.modelName || '-',
               'Site Name': rma.siteName || '-',
               'Audi No': rma.audiNo || '-',
-              'RMA Number': rma.rmaNumber || '-',
-              'Call Log Number': rma.callLogNumber || '-',
+              'RMA Number': stripSerialSuffix(rma.rmaNumber) || '-',
+              'Call Log Number': stripSerialSuffix(rma.callLogNumber) || '-',
               'RMA Order Number': rma.rmaOrderNumber || '-',
               'RMA Type': rma.rmaType || '-',
               'RMA Raised Date': rma.rmaRaisedDate ? new Date(rma.rmaRaisedDate).toISOString().split('T')[0] : '-',
@@ -562,14 +563,14 @@ export function Analytics({ currentUser }: AnalyticsProps) {
               'Status': rma.status || '-',
               'Product Name': rma.productName || '-',
               'Product Part Number': rma.productPartNumber || '-',
-              'Product Serial Number': rma.serialNumber || '-',
+              'Product Serial Number': stripSerialSuffix(rma.serialNumber) || '-',
               'Defective Part Name': rma.defectivePartName || '-',
               'Defective Part Number': rma.defectivePartNumber || '-',
-              'Defective Part Serial': rma.defectivePartSerial || '-',
+              'Defective Part Serial': stripSerialSuffix(rma.defectivePartSerial) || '-',
               'Is DNR (Do Not Return)': rma.isDefectivePartDNR ? 'Yes' : 'No',
               'DNR Reason': rma.defectivePartDNRReason || '-',
               'Replaced Part Number': rma.replacedPartNumber || '-',
-              'Replaced Part Serial': rma.replacedPartSerial || '-',
+              'Replaced Part Serial': stripSerialSuffix(rma.replacedPartSerial) || '-',
               'Defect Details': rma.defectDetails || '-',
               'Symptoms': rma.symptoms || '-',
               'Shipping Carrier': rma.shippingCarrier || '-',
@@ -841,7 +842,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
                 <div className="mt-3 space-y-2">
                   {overdueReplacementShipping.slice(0, 3).map(rma => (
                     <div key={rma.id} className="text-xs text-gray-700 border-l-2 border-red-500 pl-2">
-                      {rma.rmaNumber ? `${rma.rmaNumber} - ` : ''}{getRMASiteName(rma)} ({daysBetween(rma.rmaRaisedDate, today)} days)
+                      {rma.rmaNumber ? `${stripSerialSuffix(rma.rmaNumber)} - ` : ''}{getRMASiteName(rma)} ({daysBetween(rma.rmaRaisedDate, today)} days)
                     </div>
                   ))}
                 </div>
@@ -854,7 +855,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
                 <div className="mt-3 space-y-2">
                   {overdueDefectiveReturn.slice(0, 3).map(rma => (
                     <div key={rma.id} className="text-xs text-gray-700 border-l-2 border-red-500 pl-2">
-                      {rma.rmaNumber ? `${rma.rmaNumber} - ` : ''}{getRMASiteName(rma)} ({daysBetween(rma.shippedDate!, today)} days)
+                      {rma.rmaNumber ? `${stripSerialSuffix(rma.rmaNumber)} - ` : ''}{getRMASiteName(rma)} ({daysBetween(rma.shippedDate!, today)} days)
                     </div>
                   ))}
                 </div>
@@ -1252,7 +1253,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">
-                        {projector.serialNumber}
+                        {stripSerialSuffix(projector.serialNumber)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-gray-600">
                         {projector.modelName || '-'}

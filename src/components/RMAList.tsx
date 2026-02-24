@@ -7,6 +7,7 @@ import { rmaService } from '../services/rma.service';
 import { RMAForm } from './RMAForm';
 import { RMADetail } from './RMADetail';
 import { ProtectedComponent } from './ProtectedComponent';
+import { stripSerialSuffix } from '../utils/serialNumber';
 
 interface RMAListProps {
   currentUser: any;
@@ -443,9 +444,9 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
   const getFieldValue = (rma: any, fieldKey: string): string => {
     switch (fieldKey) {
       case 'rmaNumber':
-        return rma.rmaNumber || '-';
+        return stripSerialSuffix(rma.rmaNumber) || '-';
       case 'callLogNumber':
-        return rma.callLogNumber || '-';
+        return stripSerialSuffix(rma.callLogNumber) || '-';
       case 'rmaOrderNumber':
         return rma.rmaOrderNumber || '-';
       case 'rmaType':
@@ -463,13 +464,13 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
       case 'productPartNumber':
         return rma.productPartNumber || '-';
       case 'serialNumber':
-        return rma.serialNumber || '-';
+        return stripSerialSuffix(rma.serialNumber) || '-';
       case 'defectivePartName':
         return rma.defectivePartName || '-';
       case 'defectivePartNumber':
         return rma.defectivePartNumber || '-';
       case 'defectivePartSerial':
-        return rma.defectivePartSerial || '-';
+        return stripSerialSuffix(rma.defectivePartSerial) || '-';
       case 'returnTrackingNumber':
         return rma.returnTrackingNumber || '-';
       case 'returnShippedThrough':
@@ -479,7 +480,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
       case 'replacedPartNumber':
         return rma.replacedPartNumber || '-';
       case 'replacedPartSerial':
-        return rma.replacedPartSerial || '-';
+        return stripSerialSuffix(rma.replacedPartSerial) || '-';
       case 'trackingNumberOut':
         return rma.trackingNumberOut || '-';
       case 'shippingCarrier':
@@ -626,8 +627,8 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
           : 0;
 
         return {
-          'RMA Number': rma.rmaNumber || '-',
-          'Call Log Number': rma.callLogNumber || '-',
+          'RMA Number': stripSerialSuffix(rma.rmaNumber) || '-',
+          'Call Log Number': stripSerialSuffix(rma.callLogNumber) || '-',
           'RMA Order Number': rma.rmaOrderNumber || '-',
           'RMA Type': rma.rmaType || '-',
           'RMA Raised Date': rma.rmaRaisedDate ? formatDateForCSV(rma.rmaRaisedDate) : '-',
@@ -636,16 +637,16 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
           'Audi Number': rma.audi?.audiNo || rma.audiNo || '-',
           'Product Name': rma.productName || '-',
           'Product Part Number': rma.productPartNumber || '-',
-          'Serial Number': rma.serialNumber || '-',
+          'Serial Number': stripSerialSuffix(rma.serialNumber) || '-',
           'Defect Details': rma.defectDetails || '-',
           'Symptoms': rma.symptoms || '-',
           'Defective Part Name': rma.defectivePartName || '-',
           'Defective Part Number': rma.defectivePartNumber || '-',
-          'Defective Part Serial': rma.defectivePartSerial || '-',
+          'Defective Part Serial': stripSerialSuffix(rma.defectivePartSerial) || '-',
           'Is DNR': rma.isDefectivePartDNR ? 'Yes' : 'No',
           'DNR Reason': rma.defectivePartDNRReason || '-',
           'Replacement Part Number': rma.replacedPartNumber || '-',
-          'Replacement Part Serial': rma.replacedPartSerial || '-',
+          'Replacement Part Serial': stripSerialSuffix(rma.replacedPartSerial) || '-',
           'Shipping Carrier': rma.shippingCarrier || '-',
           'Tracking Number (Outbound)': rma.trackingNumberOut || '-',
           'Shipped Date': rma.shippedDate ? formatDateForCSV(rma.shippedDate) : '-',
@@ -1289,13 +1290,13 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                 <tr key={rma.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                   {/* RMA # */}
                   <td className="px-4 py-4 whitespace-nowrap min-w-[110px]">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{rma.rmaNumber || '-'}</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{stripSerialSuffix(rma.rmaNumber) || '-'}</span>
                   </td>
                   
                   {/* Call Log # (DTR Link) */}
                   <td className="px-4 py-4 whitespace-nowrap min-w-[90px]">
                     {rma.callLogNumber ? (
-                      <span className="text-sm text-blue-600">{rma.callLogNumber}</span>
+                      <span className="text-sm text-blue-600">{stripSerialSuffix(rma.callLogNumber)}</span>
                     ) : (
                       <span className="text-xs text-gray-400">-</span>
                     )}
@@ -1352,7 +1353,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                       </div>
                       {/* Serial number */}
                       <div className="text-gray-400 text-[11px] whitespace-nowrap">
-                        S/N: {rma.serialNumber || '-'}
+                        S/N: {stripSerialSuffix(rma.serialNumber) || '-'}
                       </div>
                     </div>
                   </td>
@@ -1369,7 +1370,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                             <div className="text-gray-600 whitespace-nowrap">P/N: {rma.defectivePartNumber}</div>
                           )}
                           {rma.defectivePartSerial && (
-                            <div className="text-gray-600 whitespace-nowrap">S/N: {rma.defectivePartSerial}</div>
+                            <div className="text-gray-600 whitespace-nowrap">S/N: {stripSerialSuffix(rma.defectivePartSerial)}</div>
                           )}
                           {rma.returnTrackingNumber && (
                             <div className="text-blue-600 whitespace-nowrap">📦 {rma.returnTrackingNumber}</div>
@@ -1393,7 +1394,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                             P/N: {rma.replacedPartNumber || '-'}
                           </div>
                           {rma.replacedPartSerial && (
-                            <div className="text-gray-600 whitespace-nowrap">S/N: {rma.replacedPartSerial}</div>
+                            <div className="text-gray-600 whitespace-nowrap">S/N: {stripSerialSuffix(rma.replacedPartSerial)}</div>
                           )}
                           {rma.trackingNumberOut && (
                             <div className="text-green-600 whitespace-nowrap">📤 {rma.trackingNumberOut}</div>

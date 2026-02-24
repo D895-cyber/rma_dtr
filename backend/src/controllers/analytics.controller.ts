@@ -348,7 +348,7 @@ export async function getSiteStats(req: Request, res: Response) {
 // Get RMA Part Analytics
 export async function getRmaPartAnalytics(req: AuthRequest, res: Response) {
   try {
-    const { fromDate, toDate, partName, partNumber } = req.query;
+    const { fromDate, toDate, partName, partNumber, exactMatch } = req.query;
 
     // Build where clause for date range
     const dateWhere: any = {};
@@ -362,14 +362,43 @@ export async function getRmaPartAnalytics(req: AuthRequest, res: Response) {
     // Build where clause for part search (search in all part fields)
     const partWhere: any[] = [];
     if (partName || partNumber) {
-      const searchTerm = (partName || partNumber) as string;
-      partWhere.push(
-        { productPartNumber: { contains: searchTerm, mode: 'insensitive' } },
-        { defectivePartNumber: { contains: searchTerm, mode: 'insensitive' } },
-        { defectivePartName: { contains: searchTerm, mode: 'insensitive' } },
-        { replacedPartNumber: { contains: searchTerm, mode: 'insensitive' } },
-        { productName: { contains: searchTerm, mode: 'insensitive' } }
-      );
+      const rawSearchTerm = (partName || partNumber) as string;
+      const searchTerm = rawSearchTerm.trim();
+
+      // Safely normalize the exactMatch flag from query params
+      let exactMatchFlag: string | boolean | undefined;
+      if (typeof exactMatch === 'string') {
+        exactMatchFlag = exactMatch;
+      } else if (Array.isArray(exactMatch)) {
+        const first = exactMatch[0];
+        exactMatchFlag = typeof first === 'string' ? first : undefined;
+      } else if (typeof exactMatch === 'boolean') {
+        exactMatchFlag = exactMatch;
+      }
+
+      const isExact =
+        (typeof exactMatchFlag === 'string' && exactMatchFlag.toLowerCase() === 'true') ||
+        (typeof exactMatchFlag === 'boolean' && exactMatchFlag === true);
+
+      if (isExact) {
+        // Exact, case-insensitive match across all part fields
+        partWhere.push(
+          { productPartNumber: { equals: searchTerm, mode: 'insensitive' } },
+          { defectivePartNumber: { equals: searchTerm, mode: 'insensitive' } },
+          { defectivePartName: { equals: searchTerm, mode: 'insensitive' } },
+          { replacedPartNumber: { equals: searchTerm, mode: 'insensitive' } },
+          { productName: { equals: searchTerm, mode: 'insensitive' } }
+        );
+      } else {
+        // Fuzzy search (default behaviour)
+        partWhere.push(
+          { productPartNumber: { contains: searchTerm, mode: 'insensitive' } },
+          { defectivePartNumber: { contains: searchTerm, mode: 'insensitive' } },
+          { defectivePartName: { contains: searchTerm, mode: 'insensitive' } },
+          { replacedPartNumber: { contains: searchTerm, mode: 'insensitive' } },
+          { productName: { contains: searchTerm, mode: 'insensitive' } }
+        );
+      }
     }
 
     // Combine where clauses

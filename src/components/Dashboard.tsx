@@ -3,6 +3,7 @@ import { FileText, Package, AlertCircle, CheckCircle, Clock, TrendingUp, LayoutG
 import { analyticsService } from '../services/analytics.service';
 import { useDashboardLayout, DASHBOARD_WIDGET_IDS, WIDGET_LABELS, type DashboardWidgetId } from '../hooks/useDashboardLayout';
 import api from '../services/api';
+import { stripSerialSuffix } from '../utils/serialNumber';
 
 interface DashboardProps {
   currentUser: any;
@@ -435,7 +436,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
                   <div>
                     {/* Top line: RMA # or Call Log # */}
                     <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      {rma.rmaNumber || rma.callLogNumber || 'N/A'}
+                      {stripSerialSuffix(rma.rmaNumber || rma.callLogNumber) || 'N/A'}
                     </p>
                     {/* Second line: Site name (like DTR list) */}
                     <p className="text-xs text-gray-600 dark:text-gray-400">
@@ -503,7 +504,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
                       <div className="flex items-start justify-between mb-1">
                         <div>
                           <p className="text-sm font-medium text-gray-900 dark:text-white">
-                            {rma.rmaNumber || rma.callLogNumber || 'N/A'}
+                            {stripSerialSuffix(rma.rmaNumber || rma.callLogNumber) || 'N/A'}
                           </p>
                           <p className="text-xs text-gray-600 dark:text-gray-400">
                             {getSiteName(rma.site)} • {rma.productName}

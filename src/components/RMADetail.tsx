@@ -8,6 +8,7 @@ import { CaseTimeline } from './CaseTimeline';
 import { CasePresence } from './CasePresence';
 import { ProtectedComponent } from './ProtectedComponent';
 import { usePermissions } from '../hooks/usePermissions';
+import { stripSerialSuffix } from '../utils/serialNumber';
 
 interface RMADetailProps {
   rma: RMACase;
@@ -252,7 +253,7 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
         <span className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
           <span>RMA Cases</span>
           <ChevronRight className="w-4 h-4 shrink-0" />
-          <span className="font-medium text-gray-900 dark:text-white">{rma.rmaNumber || 'No PO'}</span>
+          <span className="font-medium text-gray-900 dark:text-white">{stripSerialSuffix(rma.rmaNumber) || 'No PO'}</span>
         </span>
       </nav>
 
@@ -261,7 +262,7 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <h2 className="text-gray-900 dark:text-white">RMA: {rma.rmaNumber || 'No PO'}</h2>
+              <h2 className="text-gray-900 dark:text-white">RMA: {stripSerialSuffix(rma.rmaNumber) || 'No PO'}</h2>
               <span className={`px-3 py-1 rounded text-sm ${
                 rma.status === 'closed' ? 'bg-green-100 text-green-700' :
                 rma.status === 'faulty_in_transit_to_cds' ? 'bg-purple-100 text-purple-700' :
@@ -286,7 +287,7 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
               Order: {rma.rmaOrderNumber} | Created by {rma.createdBy}
             </p>
             {rma.callLogNumber && (
-              <p className="text-sm text-gray-600 dark:text-gray-400">Linked to DTR: {rma.callLogNumber}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Linked to DTR: {stripSerialSuffix(rma.callLogNumber)}</p>
             )}
           </div>
           <div className="flex items-center gap-2">

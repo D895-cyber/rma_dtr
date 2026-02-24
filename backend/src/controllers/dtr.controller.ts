@@ -6,6 +6,12 @@ import { sendAssignmentEmail, sendStatusChangeEmail, sendOverdueCaseEmail } from
 import { findMatchingRule, getAssignedUser } from '../utils/assignmentRule.util';
 import { getNotificationPreferencesForUser } from './notificationPreference.controller';
 
+// Normalize status from URL (e.g. "in-progress") to Prisma enum (e.g. "in_progress")
+function normalizeCallStatus(status: string | undefined): string | undefined {
+  if (!status) return undefined;
+  return status.replace(/-/g, '_');
+}
+
 // Get all DTR cases with filters
 export async function getAllDtrCases(req: AuthRequest, res: Response) {
   try {
@@ -13,7 +19,8 @@ export async function getAllDtrCases(req: AuthRequest, res: Response) {
 
     const where: any = {};
 
-    if (status) where.callStatus = status;
+    const normalizedStatus = normalizeCallStatus(status as string);
+    if (normalizedStatus) where.callStatus = normalizedStatus;
     if (severity) where.caseSeverity = severity;
     if (assignedTo) where.assignedTo = assignedTo;
 
@@ -238,7 +245,7 @@ export async function createDtrCase(req: AuthRequest, res: Response) {
         natureOfProblem,
         actionTaken: actionTaken || null,
         remarks: remarks || null,
-        callStatus: callStatus || 'open',
+        callStatus: (normalizeCallStatus(callStatus) || callStatus || 'open') as any,
         caseSeverity: caseSeverity || 'medium',
         createdBy: req.user!.userId,
         assignedTo: assignedToUserId,
@@ -344,6 +351,11 @@ export async function updateDtrCase(req: AuthRequest, res: Response) {
     delete updateData.closer;
     delete updateData.auditLog;
     delete updateData.auditLogs;
+
+    // Normalize callStatus for Prisma enum (e.g. "in-progress" -> "in_progress")
+    if (updateData.callStatus) {
+      updateData.callStatus = (normalizeCallStatus(updateData.callStatus) || updateData.callStatus) as any;
+    }
 
     // Handle assignedTo: convert email to user ID if needed
     if (updateData.assignedTo) {
@@ -567,9 +579,10 @@ export async function updateDtrStatus(req: AuthRequest, res: Response) {
       return sendError(res, 'Status is required', 400);
     }
 
+    const normalizedStatus = normalizeCallStatus(status);
     const dtrCase = await prisma.dtrCase.update({
       where: { id },
-      data: { callStatus: status },
+      data: { callStatus: normalizedStatus || status },
     });
 
     // Create audit log

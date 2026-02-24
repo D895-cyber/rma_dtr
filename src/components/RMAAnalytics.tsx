@@ -3,6 +3,7 @@ import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { Search, Calendar, Download, FileSpreadsheet, TrendingUp, AlertCircle, Package, Filter, BarChart3, Activity, RefreshCw, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import api from '../services/api';
+import { stripSerialSuffix } from '../utils/serialNumber';
 
 interface RMAAnalyticsProps {
   currentUser: any;
@@ -40,6 +41,7 @@ export function RMAAnalytics({ currentUser }: RMAAnalyticsProps) {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [partSearch, setPartSearch] = useState('');
+  const [exactMatch, setExactMatch] = useState(false);
   const [loading, setLoading] = useState(false);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,9 @@ export function RMAAnalytics({ currentUser }: RMAAnalyticsProps) {
       if (partSearch) {
         params.append('partName', partSearch);
         params.append('partNumber', partSearch);
+        if (exactMatch) {
+          params.append('exactMatch', 'true');
+        }
       }
 
       const response = await api.get<AnalyticsData>(`/analytics/rma-parts?${params.toString()}`);
@@ -83,8 +88,8 @@ export function RMAAnalytics({ currentUser }: RMAAnalyticsProps) {
     }
 
     const data = analyticsData.cases.map(case_ => ({
-      'RMA Number': case_.rmaNumber || '-',
-      'Call Log Number': case_.callLogNumber || '-',
+      'RMA Number': stripSerialSuffix(case_.rmaNumber) || '-',
+      'Call Log Number': stripSerialSuffix(case_.callLogNumber) || '-',
       'RMA Raised Date': case_.rmaRaisedDate,
       'Product Part Number': case_.productPartNumber || '-',
       'Defective Part Number': case_.defectivePartNumber || '-',
@@ -223,6 +228,18 @@ export function RMAAnalytics({ currentUser }: RMAAnalyticsProps) {
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 onKeyPress={(e) => e.key === 'Enter' && fetchAnalytics()}
               />
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                id="exactMatch"
+                type="checkbox"
+                checked={exactMatch}
+                onChange={(e) => setExactMatch(e.target.checked)}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="exactMatch" className="text-xs text-gray-600">
+                Exact match (only show cases where the part name/number is exactly what I typed)
+              </label>
             </div>
           </div>
         </div>
@@ -580,7 +597,7 @@ export function RMAAnalytics({ currentUser }: RMAAnalyticsProps) {
                         className={`hover:bg-gray-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
                       >
                         <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                          {case_.rmaNumber || case_.callLogNumber || '-'}
+                          {stripSerialSuffix(case_.rmaNumber || case_.callLogNumber) || '-'}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-600">
                           {new Date(case_.rmaRaisedDate).toLocaleDateString('en-US', { 

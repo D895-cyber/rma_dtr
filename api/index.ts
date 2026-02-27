@@ -80,8 +80,12 @@ app.use(cors({
 // Rate limiting - Store in memory (works for serverless)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
+  max: process.env.NODE_ENV === 'development' ? 1000 : 500,
+  message: {
+    success: false,
+    message: 'Too many requests from this IP, please try again later.',
+    error: 'TooManyRequests',
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });

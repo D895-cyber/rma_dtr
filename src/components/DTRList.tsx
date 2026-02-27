@@ -37,18 +37,12 @@ export function DTRList({ currentUser, openCaseId, onOpenCaseHandled }: DTRListP
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Reload cases when filters change (no pagination)
+  // Mark initial load complete once first data load finishes
   useEffect(() => {
-    const filters: any = {};
-    if (statusFilter !== 'all') filters.status = statusFilter;
-    if (severityFilter !== 'all') filters.severity = severityFilter;
-    if (debouncedSearchTerm) filters.search = debouncedSearchTerm;
-    // Fetch all cases without pagination
-    loadCases(filters).then(() => {
+    if (!loading) {
       setIsInitialLoad(false);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, severityFilter, debouncedSearchTerm]);
+    }
+  }, [loading]);
 
   // When field mode is turned on, switch to "My cases"
   useEffect(() => {
@@ -229,12 +223,6 @@ export function DTRList({ currentUser, openCaseId, onOpenCaseHandled }: DTRListP
           const result = await createCase(data);
           if (result.success) {
             setShowForm(false);
-            // Refresh list with current filters so new case appears without manual refresh
-            const filters: Record<string, string> = {};
-            if (statusFilter !== 'all') filters.status = statusFilter;
-            if (severityFilter !== 'all') filters.severity = severityFilter;
-            if (debouncedSearchTerm) filters.search = debouncedSearchTerm;
-            await loadCases(filters);
           } else {
             alert(result.message || 'Failed to create DTR case');
           }

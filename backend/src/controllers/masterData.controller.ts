@@ -7,7 +7,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 // SITE CONTROLLERS
 // ============================================
 
-export async function getAllSites(req: Request, res: Response) {
+export async function getAllSites(req: AuthRequest, res: Response) {
   try {
     const { search } = req.query;
 
@@ -15,6 +15,11 @@ export async function getAllSites(req: Request, res: Response) {
 
     if (search) {
       where.siteName = { contains: search as string, mode: 'insensitive' };
+    }
+
+    // Staff: restrict to PVR sites only
+    if (req.user?.role === 'staff') {
+      where.siteType = 'pvr';
     }
 
     const sites = await prisma.site.findMany({
@@ -40,7 +45,7 @@ export async function getAllSites(req: Request, res: Response) {
   }
 }
 
-export async function getSiteById(req: Request, res: Response) {
+export async function getSiteById(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
 
@@ -63,6 +68,11 @@ export async function getSiteById(req: Request, res: Response) {
       return sendError(res, 'Site not found', 404);
     }
 
+    // Staff: deny access to NON-PVR sites
+    if (req.user?.role === 'staff' && site.siteType !== 'pvr') {
+      return sendError(res, 'Site not found', 404);
+    }
+
     return sendSuccess(res, { site });
   } catch (error: any) {
     console.error('Get site error:', error);
@@ -72,14 +82,17 @@ export async function getSiteById(req: Request, res: Response) {
 
 export async function createSite(req: Request, res: Response) {
   try {
-    const { siteName } = req.body;
+    const { siteName, siteType } = req.body;
 
     if (!siteName) {
       return sendError(res, 'Site name is required', 400);
     }
 
     const site = await prisma.site.create({
-      data: { siteName },
+      data: {
+        siteName,
+        siteType: siteType === 'non_pvr' ? 'non_pvr' : 'pvr',
+      },
     });
 
     return sendSuccess(res, { site }, 'Site created successfully', 201);
@@ -92,15 +105,20 @@ export async function createSite(req: Request, res: Response) {
 export async function updateSite(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const { siteName } = req.body;
+    const { siteName, siteType } = req.body;
 
     if (!siteName) {
       return sendError(res, 'Site name is required', 400);
     }
 
+    const updateData: { siteName: string; siteType?: 'pvr' | 'non_pvr' } = { siteName };
+    if (siteType !== undefined) {
+      updateData.siteType = siteType === 'non_pvr' ? 'non_pvr' : 'pvr';
+    }
+
     const site = await prisma.site.update({
       where: { id },
-      data: { siteName },
+      data: updateData,
     });
 
     return sendSuccess(res, { site }, 'Site updated successfully');
@@ -129,7 +147,7 @@ export async function deleteSite(req: Request, res: Response) {
 // AUDI CONTROLLERS
 // ============================================
 
-export async function getAllAudis(req: Request, res: Response) {
+export async function getAllAudis(req: AuthRequest, res: Response) {
   try {
     const { siteId } = req.query;
 
@@ -137,6 +155,11 @@ export async function getAllAudis(req: Request, res: Response) {
 
     if (siteId) {
       where.siteId = siteId as string;
+    }
+
+    // Staff: restrict to audis belonging to PVR sites only
+    if (req.user?.role === 'staff') {
+      where.site = { siteType: 'pvr' };
     }
 
     const audis = await prisma.audi.findMany({

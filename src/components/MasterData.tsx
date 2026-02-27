@@ -37,8 +37,9 @@ export function MasterData({ currentUser }: MasterDataProps) {
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [searchSiteName, setSearchSiteName] = useState('');
   const [searchSerialNumber, setSearchSerialNumber] = useState('');
+  const [siteTypeFilter, setSiteTypeFilter] = useState<'all' | 'pvr' | 'non_pvr'>('all');
 
-  const [siteFormData, setSiteFormData] = useState({ siteName: '' });
+  const [siteFormData, setSiteFormData] = useState({ siteName: '', siteType: 'pvr' as 'pvr' | 'non_pvr' });
   const [audiFormData, setAudiFormData] = useState({
     audiNo: '',
     modelNo: '',
@@ -62,12 +63,14 @@ export function MasterData({ currentUser }: MasterDataProps) {
         audi.projector?.serialNumber?.toLowerCase().includes(searchSerialNumber.toLowerCase())
       );
     
-    return siteNameMatch && serialNumberMatch;
+    const siteTypeMatch = siteTypeFilter === 'all' || (site.siteType || 'pvr') === siteTypeFilter;
+    
+    return siteNameMatch && serialNumberMatch && siteTypeMatch;
   });
 
   // Auto-expand sites that match search criteria
   useEffect(() => {
-    if (searchSiteName || searchSerialNumber) {
+    if (searchSiteName || searchSerialNumber || siteTypeFilter !== 'all') {
       const matching = sites.filter((site) => {
         const siteNameMatch = !searchSiteName || 
           site.siteName.toLowerCase().includes(searchSiteName.toLowerCase());
@@ -75,27 +78,29 @@ export function MasterData({ currentUser }: MasterDataProps) {
           site.audis.some((audi) => 
             audi.projector?.serialNumber?.toLowerCase().includes(searchSerialNumber.toLowerCase())
           );
-        return siteNameMatch && serialNumberMatch;
+        const siteTypeMatch = siteTypeFilter === 'all' || (site.siteType || 'pvr') === siteTypeFilter;
+        return siteNameMatch && serialNumberMatch && siteTypeMatch;
       });
       
       if (matching.length > 0 && !matching.some(s => s.id === expandedSiteId)) {
         setExpandedSiteId(matching[0].id);
       }
     }
-  }, [searchSiteName, searchSerialNumber, sites, expandedSiteId]);
+  }, [searchSiteName, searchSerialNumber, siteTypeFilter, sites, expandedSiteId]);
 
   // Clear search
   const clearSearch = () => {
     setSearchSiteName('');
     setSearchSerialNumber('');
+    setSiteTypeFilter('all');
     setShowAdvancedSearch(false);
   };
 
   const handleAddSite = async () => {
     if (siteFormData.siteName.trim()) {
-      const result = await createSite({ siteName: siteFormData.siteName });
+      const result = await createSite({ siteName: siteFormData.siteName, siteType: siteFormData.siteType });
       if (result.success) {
-        setSiteFormData({ siteName: '' });
+        setSiteFormData({ siteName: '', siteType: 'pvr' });
         setShowSiteForm(false);
         await loadSites();
       } else {
@@ -106,9 +111,9 @@ export function MasterData({ currentUser }: MasterDataProps) {
 
   const handleUpdateSite = async () => {
     if (editingSite && siteFormData.siteName.trim()) {
-      const result = await updateSite(editingSite.id, { siteName: siteFormData.siteName });
+      const result = await updateSite(editingSite.id, { siteName: siteFormData.siteName, siteType: siteFormData.siteType });
       if (result.success) {
-        setSiteFormData({ siteName: '' });
+        setSiteFormData({ siteName: '', siteType: 'pvr' });
         setEditingSite(null);
         await loadSites();
       } else {
@@ -274,13 +279,13 @@ export function MasterData({ currentUser }: MasterDataProps) {
   };
 
   const openAddSiteForm = () => {
-    setSiteFormData({ siteName: '' });
+    setSiteFormData({ siteName: '', siteType: 'pvr' });
     setEditingSite(null);
     setShowSiteForm(true);
   };
 
   const openEditSiteForm = (site: Site) => {
-    setSiteFormData({ siteName: site.siteName });
+    setSiteFormData({ siteName: site.siteName, siteType: (site.siteType || 'pvr') as 'pvr' | 'non_pvr' });
     setEditingSite(site);
     setShowSiteForm(true);
   };
@@ -422,7 +427,19 @@ export function MasterData({ currentUser }: MasterDataProps) {
               <XCircle className="w-5 h-5" />
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm text-gray-700 mb-2">Site Type</label>
+              <select
+                value={siteTypeFilter}
+                onChange={(e) => setSiteTypeFilter(e.target.value as 'all' | 'pvr' | 'non_pvr')}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All (PVR & NON-PVR)</option>
+                <option value="pvr">PVR only</option>
+                <option value="non_pvr">NON-PVR only</option>
+              </select>
+            </div>
             <div>
               <label className="block text-sm text-gray-700 mb-2">Search by Site Name</label>
               <div className="relative">
@@ -450,7 +467,7 @@ export function MasterData({ currentUser }: MasterDataProps) {
               </div>
             </div>
           </div>
-          {(searchSiteName || searchSerialNumber) && (
+          {(searchSiteName || searchSerialNumber || siteTypeFilter !== 'all') && (
             <div className="mt-4 pt-4 border-t border-gray-200">
               <p className="text-sm text-gray-600">
                 Showing <span className="font-semibold text-gray-900">{filteredSites.length}</span> of{' '}
@@ -477,11 +494,23 @@ export function MasterData({ currentUser }: MasterDataProps) {
                 <input
                   type="text"
                   value={siteFormData.siteName}
-                  onChange={(e) => setSiteFormData({ siteName: e.target.value })}
+                  onChange={(e) => setSiteFormData({ ...siteFormData, siteName: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g., ABC Conference Center"
                   autoFocus
                 />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-2">Site Type</label>
+                <select
+                  value={siteFormData.siteType}
+                  onChange={(e) => setSiteFormData({ ...siteFormData, siteType: e.target.value as 'pvr' | 'non_pvr' })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="pvr">PVR</option>
+                  <option value="non_pvr">NON-PVR</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Mark as NON-PVR for sites like JD Cinema, Godrej, Rashtrapati Bhavan, etc.</p>
               </div>
               <div className="flex justify-end gap-3">
                 <button
@@ -568,7 +597,7 @@ export function MasterData({ currentUser }: MasterDataProps) {
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-gray-900">Sites & Audis</h3>
           <p className="text-sm text-gray-600 mt-1">
-            {searchSiteName || searchSerialNumber ? (
+            {searchSiteName || searchSerialNumber || siteTypeFilter !== 'all' ? (
               <>Showing <span className="font-semibold">{filteredSites.length}</span> of <span className="font-semibold">{sites.length}</span> sites</>
             ) : (
               <>Total: {sites.length} sites</>
@@ -614,7 +643,12 @@ export function MasterData({ currentUser }: MasterDataProps) {
                     <Building2 className="w-5 h-5 text-blue-600" />
                     <div>
                       <h4 className="text-gray-900">{site.siteName}</h4>
-                      <p className="text-xs text-gray-500">{site.audis.length} audi(s)</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-gray-500">{site.audis.length} audi(s)</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${(site.siteType || 'pvr') === 'non_pvr' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
+                          {(site.siteType || 'pvr') === 'non_pvr' ? 'NON-PVR' : 'PVR'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

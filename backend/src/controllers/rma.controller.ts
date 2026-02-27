@@ -2,6 +2,14 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/response.util';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../utils/prisma.util';
+
+// Staff users see only PVR sites' data
+function getStaffPvrSiteFilter(role: string | undefined) {
+  if (role === 'staff') {
+    return { site: { siteType: 'pvr' as const } };
+  }
+  return {};
+}
 import { sendAssignmentEmail, sendRmaClientEmail } from '../utils/email.util';
 
 // Get all RMA cases with filters
@@ -10,6 +18,9 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
     const { status, type, assignedTo, search, page = '1', limit = '50' } = req.query;
 
     const where: any = {};
+
+    // Staff: restrict to PVR sites only
+    Object.assign(where, getStaffPvrSiteFilter(req.user?.role));
 
     if (status) where.status = status;
     if (type) where.rmaType = type;
@@ -95,7 +106,7 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
 }
 
 // Get single RMA case by ID
-export async function getRmaCaseById(req: Request, res: Response) {
+export async function getRmaCaseById(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
 
@@ -136,6 +147,11 @@ export async function getRmaCaseById(req: Request, res: Response) {
     ]);
 
     if (!rmaCase) {
+      return sendError(res, 'RMA case not found', 404);
+    }
+
+    // Staff: deny access to NON-PVR cases
+    if (req.user?.role === 'staff' && rmaCase.site?.siteType !== 'pvr') {
       return sendError(res, 'RMA case not found', 404);
     }
 
@@ -184,6 +200,14 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
     // Updated validation: rmaNumber and rmaOrderNumber are now OPTIONAL
     if (!rmaType || !rmaRaisedDate || !customerErrorDate || !siteId || !productName || !productPartNumber || !serialNumber) {
       return sendError(res, 'Missing required fields: rmaType, rmaRaisedDate, customerErrorDate, siteId, productName, productPartNumber, serialNumber', 400);
+    }
+
+    // Staff: can only create RMA on PVR sites
+    if (req.user?.role === 'staff') {
+      const site = await prisma.site.findUnique({ where: { id: siteId }, select: { siteType: true } });
+      if (!site || site.siteType !== 'pvr') {
+        return sendError(res, 'Staff can only create cases for PVR sites', 403);
+      }
     }
 
     // Validate RMA Type
@@ -325,10 +349,15 @@ export async function updateRmaCase(req: AuthRequest, res: Response) {
     // Get the current case to check for assignment changes
     const currentCase = await prisma.rmaCase.findUnique({
       where: { id },
-      select: { assignedTo: true, rmaNumber: true, callLogNumber: true },
+      select: { assignedTo: true, rmaNumber: true, callLogNumber: true, site: { select: { siteType: true } } },
     });
 
     if (!currentCase) {
+      return sendError(res, 'RMA case not found', 404);
+    }
+
+    // Staff: cannot update NON-PVR cases
+    if (req.user?.role === 'staff' && currentCase.site?.siteType !== 'pvr') {
       return sendError(res, 'RMA case not found', 404);
     }
 

@@ -484,25 +484,24 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       )
     : null;
 
-  // Average return time
+  // Median return time (shipped to returned) - resists outliers
   const closedRMAsWithValidReturnDates = rmaCases.filter(r => {
     if (r.status !== 'closed' || !r.shippedDate || !r.returnShippedDate) return false;
     const days = daysBetween(r.shippedDate, r.returnShippedDate);
     return days !== null && days >= 0;
   });
-  
-  const avgReturnTime = closedRMAsWithValidReturnDates.length > 0
-    ? (() => {
-        const totalDays = closedRMAsWithValidReturnDates.reduce((sum, rma) => {
-          const days = daysBetween(rma.shippedDate!, rma.returnShippedDate!);
-          return sum + (days || 0);
-        }, 0);
-        const avg = Math.round(totalDays / closedRMAsWithValidReturnDates.length);
-        // If average is 0 and we have cases, it means all were same-day returns
-        // Return 0 to show "0 days" (same day returns)
-        return avg;
-      })()
-    : null;
+
+  const medianReturnTime = (() => {
+    if (closedRMAsWithValidReturnDates.length === 0) return null;
+    const daysArr = closedRMAsWithValidReturnDates
+      .map(rma => daysBetween(rma.shippedDate!, rma.returnShippedDate!) ?? 0)
+      .sort((a, b) => a - b);
+    const n = daysArr.length;
+    const mid = Math.floor(n / 2);
+    return n % 2 === 1
+      ? daysArr[mid]
+      : Math.round((daysArr[mid - 1] + daysArr[mid]) / 2);
+  })();
 
   // Defective vs Replaced parts
   const defectivePartTypes = rmaCases.reduce((acc, rma) => {
@@ -673,7 +672,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       ['Open RMAs', rmaCases.filter(r => r.status === 'open').length],
       ['Closed RMAs', rmaCases.filter(r => r.status === 'closed').length],
       ['Average Shipping Time (days)', avgShippingTime !== null ? avgShippingTime : 'No data'],
-      ['Average Return Time (days)', avgReturnTime !== null ? avgReturnTime : 'No data'],
+      ['Median Return Time (days)', medianReturnTime !== null ? medianReturnTime : 'No data'],
       [],
       ['Overdue Cases'],
       ['Replacement Parts Not Shipped (30+ days)', overdueReplacementShipping.length],
@@ -896,10 +895,10 @@ export function Analytics({ currentUser }: AnalyticsProps) {
           )}
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <p className="text-sm text-gray-600 mb-2">Avg Return Time</p>
-          {avgReturnTime !== null ? (
+          <p className="text-sm text-gray-600 mb-2">Median Return Time</p>
+          {medianReturnTime !== null ? (
             <>
-              <p className="text-2xl font-bold text-orange-600">{avgReturnTime} days</p>
+              <p className="text-2xl font-bold text-orange-600">{medianReturnTime} days</p>
               <p className="text-xs text-gray-500 mt-2">Shipped to returned</p>
             </>
           ) : (

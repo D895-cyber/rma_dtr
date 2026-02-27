@@ -292,7 +292,13 @@ export default function App() {
 
       {/* Main Content */}
       <main className={`p-4 sm:p-6 lg:p-8 bg-gray-50 dark:bg-gray-900 min-h-[calc(100vh-8rem)] ${isFieldMode ? 'field-mode max-w-lg mx-auto' : 'max-w-[1600px] mx-auto'}`}>
-        {activeTab === 'dashboard' && <Dashboard currentUser={currentUser} />}
+        {activeTab === 'dashboard' && (
+          <Dashboard
+            currentUser={currentUser}
+            onCreateDTR={() => handleTabChange('dtr')}
+            onCreateRMA={() => handleTabChange('rma')}
+          />
+        )}
         {activeTab === 'dtr' && (
           <DTRList
             currentUser={currentUser}

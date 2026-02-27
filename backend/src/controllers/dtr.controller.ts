@@ -12,12 +12,23 @@ function normalizeCallStatus(status: string | undefined): string | undefined {
   return status.replace(/-/g, '_');
 }
 
+// Staff users see only PVR sites' data
+function getStaffPvrSiteFilter(role: string | undefined) {
+  if (role === 'staff') {
+    return { site: { siteType: 'pvr' as const } };
+  }
+  return {};
+}
+
 // Get all DTR cases with filters
 export async function getAllDtrCases(req: AuthRequest, res: Response) {
   try {
     const { status, severity, assignedTo, search, page, limit } = req.query;
 
     const where: any = {};
+
+    // Staff: restrict to PVR sites only
+    Object.assign(where, getStaffPvrSiteFilter(req.user?.role));
 
     const normalizedStatus = normalizeCallStatus(status as string);
     if (normalizedStatus) where.callStatus = normalizedStatus;
@@ -116,7 +127,7 @@ export async function getAllDtrCases(req: AuthRequest, res: Response) {
 }
 
 // Get single DTR case by ID
-export async function getDtrCaseById(req: Request, res: Response) {
+export async function getDtrCaseById(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
 
@@ -163,6 +174,11 @@ export async function getDtrCaseById(req: Request, res: Response) {
       return sendError(res, 'DTR case not found', 404);
     }
 
+    // Staff: deny access to NON-PVR cases
+    if (req.user?.role === 'staff' && dtrCase.site?.siteType !== 'pvr') {
+      return sendError(res, 'DTR case not found', 404);
+    }
+
     return sendSuccess(res, { case: { ...dtrCase, auditLogs } });
   } catch (error: any) {
     console.error('Get DTR case error:', error);
@@ -190,6 +206,14 @@ export async function createDtrCase(req: AuthRequest, res: Response) {
 
     if (!caseNumber || !errorDate || !siteId || !audiId || !unitModel || !unitSerial || !natureOfProblem) {
       return sendError(res, 'Missing required fields', 400);
+    }
+
+    // Staff: can only create DTR on PVR sites
+    if (req.user?.role === 'staff') {
+      const site = await prisma.site.findUnique({ where: { id: siteId }, select: { siteType: true } });
+      if (!site || site.siteType !== 'pvr') {
+        return sendError(res, 'Staff can only create cases for PVR sites', 403);
+      }
     }
 
     // Handle assignedTo: convert email to user ID if needed, or use auto-assignment
@@ -324,6 +348,7 @@ export async function updateDtrCase(req: AuthRequest, res: Response) {
     const currentCase = await prisma.dtrCase.findUnique({
       where: { id },
       include: {
+        site: { select: { siteType: true } },
         assignee: {
           select: { id: true, name: true, email: true },
         },
@@ -331,6 +356,11 @@ export async function updateDtrCase(req: AuthRequest, res: Response) {
     });
 
     if (!currentCase) {
+      return sendError(res, 'DTR case not found', 404);
+    }
+
+    // Staff: cannot update NON-PVR cases
+    if (req.user?.role === 'staff' && currentCase.site?.siteType !== 'pvr') {
       return sendError(res, 'DTR case not found', 404);
     }
 

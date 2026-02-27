@@ -52,9 +52,15 @@ enum UserRole {
 // MASTER DATA
 // ============================================
 
+enum SiteType {
+  pvr
+  non_pvr
+}
+
 model Site {
   id        String   @id @default(uuid())
   siteName  String   @map("site_name")
+  siteType  SiteType @default(pvr) @map("site_type")  // PVR or NON-PVR
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

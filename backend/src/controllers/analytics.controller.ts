@@ -4,11 +4,18 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../utils/prisma.util';
 import { normalizePartName } from '../utils/partName.util';
 
+// Staff users see only PVR sites' data
+function getStaffPvrWhere(role: string | undefined) {
+  if (role === 'staff') return { site: { siteType: 'pvr' as const } };
+  return {};
+}
+
 // Get dashboard statistics
 export async function getDashboardStats(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.userId;
     const userRole = req.user!.role;
+    const pvrWhere = getStaffPvrWhere(userRole);
 
     // DTR Statistics
     const [
@@ -19,12 +26,12 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
       criticalDtrCases,
       myAssignedDtrCases,
     ] = await Promise.all([
-      prisma.dtrCase.count(),
-      prisma.dtrCase.count({ where: { callStatus: 'open' } }),
-      prisma.dtrCase.count({ where: { callStatus: 'in_progress' } }),
-      prisma.dtrCase.count({ where: { callStatus: 'closed' } }),
-      prisma.dtrCase.count({ where: { caseSeverity: 'critical' } }),
-      prisma.dtrCase.count({ where: { assignedTo: userId } }),
+      prisma.dtrCase.count({ where: pvrWhere }),
+      prisma.dtrCase.count({ where: { ...pvrWhere, callStatus: 'open' } }),
+      prisma.dtrCase.count({ where: { ...pvrWhere, callStatus: 'in_progress' } }),
+      prisma.dtrCase.count({ where: { ...pvrWhere, callStatus: 'closed' } }),
+      prisma.dtrCase.count({ where: { ...pvrWhere, caseSeverity: 'critical' } }),
+      prisma.dtrCase.count({ where: { ...pvrWhere, assignedTo: userId } }),
     ]);
 
     // RMA Statistics
@@ -36,18 +43,19 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
       closedRmaCases,
       myAssignedRmaCases,
     ] = await Promise.all([
-      prisma.rmaCase.count(),
-      prisma.rmaCase.count({ where: { status: 'open' } }),
-      prisma.rmaCase.count({ where: { status: 'rma_raised_yet_to_deliver' } }),
-      prisma.rmaCase.count({ where: { status: 'faulty_in_transit_to_cds' } }),
-      prisma.rmaCase.count({ where: { status: 'closed' } }),
-      prisma.rmaCase.count({ where: { assignedTo: userId } }),
+      prisma.rmaCase.count({ where: pvrWhere }),
+      prisma.rmaCase.count({ where: { ...pvrWhere, status: 'open' } }),
+      prisma.rmaCase.count({ where: { ...pvrWhere, status: 'rma_raised_yet_to_deliver' } }),
+      prisma.rmaCase.count({ where: { ...pvrWhere, status: 'faulty_in_transit_to_cds' } }),
+      prisma.rmaCase.count({ where: { ...pvrWhere, status: 'closed' } }),
+      prisma.rmaCase.count({ where: { ...pvrWhere, assignedTo: userId } }),
     ]);
 
     // Severity breakdown (DTR)
     const severityBreakdown = await prisma.dtrCase.groupBy({
       by: ['caseSeverity'],
       _count: true,
+      where: pvrWhere,
     });
 
     // Recent window (last 7 days)
@@ -56,20 +64,17 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
 
     const [recentDtrCases, recentRmaCases] = await Promise.all([
       prisma.dtrCase.count({
-        where: {
-          createdAt: { gte: sevenDaysAgo },
-        },
+        where: { ...pvrWhere, createdAt: { gte: sevenDaysAgo } },
       }),
       prisma.rmaCase.count({
-        where: {
-          createdAt: { gte: sevenDaysAgo },
-        },
+        where: { ...pvrWhere, createdAt: { gte: sevenDaysAgo } },
       }),
     ]);
 
     // Get recent case objects (last 5) for dashboard display
     const [recentDtrCasesList, recentRmaCasesList] = await Promise.all([
       prisma.dtrCase.findMany({
+        where: pvrWhere,
         take: 5,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -102,6 +107,7 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
         },
       }),
       prisma.rmaCase.findMany({
+        where: pvrWhere,
         take: 5,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -142,6 +148,7 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
     const [overdueRmaCount, overdueRmaCasesList] = await Promise.all([
       prisma.rmaCase.count({
         where: {
+          ...pvrWhere,
           status: 'faulty_in_transit_to_cds',
           shippedDate: {
             lt: overdueThreshold,
@@ -150,6 +157,7 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
       }),
       prisma.rmaCase.findMany({
         where: {
+          ...pvrWhere,
           status: 'faulty_in_transit_to_cds',
           shippedDate: {
             lt: overdueThreshold,
@@ -207,9 +215,10 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
 }
 
 // Get trend data
-export async function getTrends(req: Request, res: Response) {
+export async function getTrends(req: AuthRequest, res: Response) {
   try {
     const { period = '7d', type = 'dtr' } = req.query;
+    const pvrWhere = getStaffPvrWhere(req.user?.role);
 
     let days = 7;
     if (period === '30d') days = 30;
@@ -220,11 +229,11 @@ export async function getTrends(req: Request, res: Response) {
 
     const cases = type === 'dtr' 
       ? await prisma.dtrCase.findMany({
-          where: { createdAt: { gte: startDate } },
+          where: { ...pvrWhere, createdAt: { gte: startDate } },
           select: { createdAt: true },
         })
       : await prisma.rmaCase.findMany({
-          where: { createdAt: { gte: startDate } },
+          where: { ...pvrWhere, createdAt: { gte: startDate } },
           select: { createdAt: true },
         });
 
@@ -255,11 +264,13 @@ export async function getTrends(req: Request, res: Response) {
 }
 
 // Get severity breakdown
-export async function getSeverityBreakdown(req: Request, res: Response) {
+export async function getSeverityBreakdown(req: AuthRequest, res: Response) {
   try {
+    const pvrWhere = getStaffPvrWhere(req.user?.role);
     const breakdown = await prisma.dtrCase.groupBy({
       by: ['caseSeverity'],
       _count: true,
+      where: pvrWhere,
     });
 
     const result = breakdown.reduce((acc, item) => {
@@ -275,8 +286,9 @@ export async function getSeverityBreakdown(req: Request, res: Response) {
 }
 
 // Get engineer performance (admin/manager only)
-export async function getEngineerPerformance(req: Request, res: Response) {
+export async function getEngineerPerformance(req: AuthRequest, res: Response) {
   try {
+    const pvrWhere = getStaffPvrWhere(req.user?.role);
     const engineers = await prisma.user.findMany({
       where: {
         role: 'engineer',
@@ -292,10 +304,10 @@ export async function getEngineerPerformance(req: Request, res: Response) {
     const performance = await Promise.all(
       engineers.map(async (engineer) => {
         const [assignedDtr, closedDtr, assignedRma, closedRma] = await Promise.all([
-          prisma.dtrCase.count({ where: { assignedTo: engineer.id } }),
-          prisma.dtrCase.count({ where: { closedBy: engineer.id } }),
-          prisma.rmaCase.count({ where: { assignedTo: engineer.id } }),
-          prisma.rmaCase.count({ where: { assignedTo: engineer.id, status: 'closed' } }),
+          prisma.dtrCase.count({ where: { ...pvrWhere, assignedTo: engineer.id } }),
+          prisma.dtrCase.count({ where: { ...pvrWhere, closedBy: engineer.id } }),
+          prisma.rmaCase.count({ where: { ...pvrWhere, assignedTo: engineer.id } }),
+          prisma.rmaCase.count({ where: { ...pvrWhere, assignedTo: engineer.id, status: 'closed' } }),
         ]);
 
         return {
@@ -322,9 +334,14 @@ export async function getEngineerPerformance(req: Request, res: Response) {
 }
 
 // Get site statistics
-export async function getSiteStats(req: Request, res: Response) {
+export async function getSiteStats(req: AuthRequest, res: Response) {
   try {
+    const where: any = {};
+    if (req.user?.role === 'staff') {
+      where.siteType = 'pvr';
+    }
     const sites = await prisma.site.findMany({
+      where,
       select: {
         id: true,
         siteName: true,
@@ -349,9 +366,10 @@ export async function getSiteStats(req: Request, res: Response) {
 export async function getRmaPartAnalytics(req: AuthRequest, res: Response) {
   try {
     const { fromDate, toDate, partName, partNumber, exactMatch } = req.query;
+    const pvrWhere = getStaffPvrWhere(req.user?.role);
 
     // Build where clause for date range
-    const dateWhere: any = {};
+    const dateWhere: any = { ...pvrWhere };
     if (fromDate) {
       dateWhere.rmaRaisedDate = { ...dateWhere.rmaRaisedDate, gte: new Date(fromDate as string) };
     }
@@ -402,7 +420,7 @@ export async function getRmaPartAnalytics(req: AuthRequest, res: Response) {
     }
 
     // Combine where clauses
-    const where: any = { ...dateWhere };
+    const where: any = { ...dateWhere, ...pvrWhere };
     if (partWhere.length > 0) {
       where.OR = partWhere;
     }
@@ -566,9 +584,11 @@ export async function getRmaPartAnalytics(req: AuthRequest, res: Response) {
 export async function getTopProjectorsByRMA(req: AuthRequest, res: Response) {
   try {
     const { fromDate, toDate } = req.query;
+    const pvrWhere = getStaffPvrWhere(req.user?.role);
     
     // Build date filter for RMA raised date
     const dateWhere: any = {
+      ...pvrWhere,
       audiId: { not: null }, // Only RMAs with associated audi (which links to projector)
     };
     
@@ -743,6 +763,7 @@ export async function getRmaAgingAnalytics(req: AuthRequest, res: Response) {
 
     const threshold = Number(thresholdDays) || 30;
     const minRepeatCount = Number(minRepeats) || 2;
+    const pvrWhere = getStaffPvrWhere(req.user?.role);
     // Handle query parameter type (can be string, array, or boolean)
     const onlyShortest = 
       (typeof showOnlyShortest === 'string' && showOnlyShortest === 'true') ||
@@ -751,6 +772,7 @@ export async function getRmaAgingAnalytics(req: AuthRequest, res: Response) {
 
     // Build date filter and exclude cancelled cases
     const dateWhere: any = {
+      ...pvrWhere,
       status: { not: 'cancelled' }, // Exclude cancelled RMA cases
     };
     if (fromDate) {
@@ -1013,9 +1035,11 @@ export async function getRmaAgingAnalytics(req: AuthRequest, res: Response) {
 export async function getRmaAgingFilterOptions(req: AuthRequest, res: Response) {
   try {
     const { fromDate, toDate } = req.query;
+    const pvrWhere = getStaffPvrWhere(req.user?.role);
 
     // Build date filter and exclude cancelled cases
     const dateWhere: any = {
+      ...pvrWhere,
       status: { not: 'cancelled' }, // Exclude cancelled RMA cases
     };
     if (fromDate) {

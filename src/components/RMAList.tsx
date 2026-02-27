@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Search, Download, Eye, Package, AlertCircle, Clock, CheckCircle, XCircle, Ban, TrendingUp, Calendar, X, CheckSquare, Square, FileSpreadsheet, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { useRMACases } from '../hooks/useAPI';
 import { rmaService } from '../services/rma.service';
 import { RMAForm } from './RMAForm';
 import { RMADetail } from './RMADetail';
@@ -16,7 +15,6 @@ interface RMAListProps {
 }
 
 export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListProps) {
-  const { createCase, updateCase } = useRMACases();
   const [showForm, setShowForm] = useState(false);
   const [selectedRMA, setSelectedRMA] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -738,7 +736,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
           currentUser={currentUser}
           onClose={() => setSelectedRMA(null)}
           onUpdate={async (id, data, userEmail, action, details) => {
-            await updateCase(id, data);
+            await rmaService.updateRMACase(id, data);
             // Reload all cases after update
             await fetchAllCases();
           }}
@@ -753,7 +751,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
         currentUser={currentUser}
         onClose={() => setShowForm(false)}
         onSubmit={async (data) => {
-          const result = await createCase(data);
+          const result = await rmaService.createRMACase(data);
           if (result.success) {
             setShowForm(false);
             // Reload all cases after create

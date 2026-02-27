@@ -2,9 +2,12 @@
 
 import api from './api';
 
+export type SiteType = 'pvr' | 'non_pvr';
+
 export interface Site {
   id: string;
   siteName: string;
+  siteType?: SiteType;  // PVR or NON-PVR (default: pvr)
   location?: string;
   contactPerson?: string;
   contactNumber?: string;

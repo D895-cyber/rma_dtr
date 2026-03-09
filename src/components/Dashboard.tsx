@@ -10,7 +10,7 @@ interface DashboardProps {
 }
 
 interface DashboardStats {
-  dtr: {
+  dtr?: {
     total: number;
     open: number;
     inProgress: number;
@@ -73,6 +73,16 @@ export function Dashboard({ currentUser }: DashboardProps) {
     const role = (currentUser?.role || '').toString().toLowerCase();
     return role === 'admin' || role === 'manager';
   })();
+
+  const canViewDtr = (() => {
+    const role = (currentUser?.role || '').toString().toLowerCase();
+    return role !== 'staff';
+  })();
+
+  const availableWidgetIds = (canViewDtr
+    ? DASHBOARD_WIDGET_IDS
+    : (DASHBOARD_WIDGET_IDS.filter((id) => !id.startsWith('dtr') && !id.includes('dtr')) as unknown as DashboardWidgetId[])
+  );
 
   const handleSyncGoogleSheet = async () => {
     if (!isAdminOrManager || syncing) return;
@@ -150,13 +160,15 @@ export function Dashboard({ currentUser }: DashboardProps) {
     );
   }
 
-  const dtrStats = {
-    total: stats.dtr.total,
-    open: stats.dtr.open,
-    inProgress: stats.dtr.inProgress,
-    closed: stats.dtr.closed,
-    critical: stats.dtr.critical,
-  };
+  const dtrStats = canViewDtr
+    ? {
+        total: stats.dtr?.total ?? 0,
+        open: stats.dtr?.open ?? 0,
+        inProgress: stats.dtr?.inProgress ?? 0,
+        closed: stats.dtr?.closed ?? 0,
+        critical: stats.dtr?.critical ?? 0,
+      }
+    : null;
 
   const rmaStats = {
     total: stats.rma.total,
@@ -167,7 +179,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
     overdue: (stats.rma as any).overdue ?? 0,
   };
 
-  const recentDTR = stats.dtr.recentCases || [];
+  const recentDTR = canViewDtr ? stats.dtr?.recentCases || [] : [];
   const recentRMA = stats.rma.recentCases || [];
   const overdueRMA = (stats.rma as any).overdueCases || [];
 
@@ -279,7 +291,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
       )}
 
       {/* Widgets in user order */}
-      {visibleOrder.includes('dtr-stats') && (
+      {canViewDtr && visibleOrder.includes('dtr-stats') && dtrStats && (
       <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 shadow-md overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
@@ -393,7 +405,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
 
       {/* Recent Activity */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {visibleOrder.includes('recent-dtr') && (
+        {canViewDtr && visibleOrder.includes('recent-dtr') && (
         /* Recent DTR */
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -552,7 +564,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Choose which widgets to show on your dashboard.</p>
             <div className="space-y-2">
-              {DASHBOARD_WIDGET_IDS.map((id) => (
+              {availableWidgetIds.map((id) => (
                 <label key={id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
                   <input
                     type="checkbox"

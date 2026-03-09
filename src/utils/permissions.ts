@@ -45,7 +45,6 @@ export type UserRole = 'staff' | 'engineer' | 'manager' | 'admin';
 // Define permissions for each role (must match backend)
 const rolePermissions: Record<UserRole, Permission[]> = {
   staff: [
-    'dtr:view',
     'rma:view',
     'analytics:view',
     'master:view',

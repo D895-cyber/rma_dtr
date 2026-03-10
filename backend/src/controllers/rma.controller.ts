@@ -739,6 +739,7 @@ export async function emailRmaClient(req: AuthRequest, res: Response) {
       where: { id },
       include: {
         site: true,
+        audi: true,
       },
     });
 
@@ -781,7 +782,12 @@ export async function emailRmaClient(req: AuthRequest, res: Response) {
       clientName: clientName || null,
       caseNumber,
       siteName: (rmaCase as any).site?.siteName || null,
-      replacedPartNumber: rmaCase.replacedPartNumber,
+      audiNo: (rmaCase as any).audi?.audiNo || null,
+      productName: rmaCase.productName,
+      productPartNumber: rmaCase.productPartNumber,
+      serialNumber: rmaCase.serialNumber,
+      replacedPartNumber: rmaCase.replacedPartNumber!,
+      replacedPartSerial: rmaCase.replacedPartSerial || null,
       shippingCarrier: rmaCase.shippingCarrier,
       trackingNumberOut: rmaCase.trackingNumberOut,
       shippedDate: shippedDateFormatted,

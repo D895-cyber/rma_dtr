@@ -121,15 +121,12 @@ export async function sendRmaClientEmail(payload: RmaClientEmailPayload) {
     '',
     `This is an update regarding your RMA case #${payload.caseNumber}.`,
     payload.siteName ? `Site: ${payload.siteName}` : '',
-    payload.audiNo ? `Audi No: ${payload.audiNo}` : '',
-    payload.productName ? `Product Name: ${payload.productName}` : '',
-    payload.productPartNumber ? `Product Part Number: ${payload.productPartNumber}` : '',
-    payload.serialNumber ? `Serial Number: ${payload.serialNumber}` : '',
+    payload.serialNumber ? `Projector Serial Number: ${payload.serialNumber}` : '',
     '',
     'Replacement Part Details:',
-    `  Replacement Part Number: ${payload.replacedPartNumber}`,
-    payload.replacedPartSerial ? `  Replacement Part Serial: ${payload.replacedPartSerial}` : '',
     payload.replacedPartName ? `  Replacement Part Name: ${payload.replacedPartName}` : '',
+    payload.replacedPartSerial ? `  Replacement Part Serial: ${payload.replacedPartSerial}` : '',
+    `  Replacement Part Number: ${payload.replacedPartNumber}`,
     '',
     payload.shippingCarrier || payload.trackingNumberOut || payload.shippedDate
       ? 'Replacement Shipment Details:'
@@ -139,6 +136,10 @@ export async function sendRmaClientEmail(payload: RmaClientEmailPayload) {
     payload.shippedDate ? `  Shipped Date: ${payload.shippedDate}` : '',
     '',
     'Please use the above tracking information to follow your shipment.',
+    '',
+    'Best Regards,',
+    'Operations Team',
+    'ascompinc.in',
   ].filter(Boolean);
 
   const html = textLines

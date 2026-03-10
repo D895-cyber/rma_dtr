@@ -786,6 +786,7 @@ export async function emailRmaClient(req: AuthRequest, res: Response) {
       productName: rmaCase.productName,
       productPartNumber: rmaCase.productPartNumber,
       serialNumber: rmaCase.serialNumber,
+      replacedPartName: rmaCase.productName || null,
       replacedPartNumber: rmaCase.replacedPartNumber!,
       replacedPartSerial: rmaCase.replacedPartSerial || null,
       shippingCarrier: rmaCase.shippingCarrier,

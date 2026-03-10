@@ -2,7 +2,9 @@
   "watch": ["src"],
   "ext": "ts,json",
   "ignore": ["src/**/*.spec.ts"],
+  "legacyWatch": true,
   "exec": "ts-node src/server.ts",
+  "stdout": true,
   "env": {
     "NODE_ENV": "development"
   }

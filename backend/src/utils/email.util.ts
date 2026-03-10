@@ -95,7 +95,13 @@ export interface RmaClientEmailPayload {
   clientName?: string | null;
   caseNumber: string;
   siteName?: string | null;
+  audiNo?: string | null;
+  productName?: string | null;
+  productPartNumber?: string | null;
+  serialNumber?: string | null;
   replacedPartNumber: string;
+  replacedPartSerial?: string | null;
+  replacedPartName?: string | null;
   shippingCarrier?: string | null;
   trackingNumberOut?: string | null;
   shippedDate?: string | null;
@@ -115,9 +121,15 @@ export async function sendRmaClientEmail(payload: RmaClientEmailPayload) {
     '',
     `This is an update regarding your RMA case #${payload.caseNumber}.`,
     payload.siteName ? `Site: ${payload.siteName}` : '',
+    payload.audiNo ? `Audi No: ${payload.audiNo}` : '',
+    payload.productName ? `Product Name: ${payload.productName}` : '',
+    payload.productPartNumber ? `Product Part Number: ${payload.productPartNumber}` : '',
+    payload.serialNumber ? `Serial Number: ${payload.serialNumber}` : '',
     '',
     'Replacement Part Details:',
     `  Replacement Part Number: ${payload.replacedPartNumber}`,
+    payload.replacedPartSerial ? `  Replacement Part Serial: ${payload.replacedPartSerial}` : '',
+    payload.replacedPartName ? `  Replacement Part Name: ${payload.replacedPartName}` : '',
     '',
     payload.shippingCarrier || payload.trackingNumberOut || payload.shippedDate
       ? 'Replacement Shipment Details:'

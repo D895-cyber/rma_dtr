@@ -321,13 +321,18 @@ export async function createDtrCase(req: AuthRequest, res: Response) {
 
       // Email notification
       if (prefs.emailCaseAssigned) {
-        sendAssignmentEmail({
-          to: dtrCase.assignee.email,
-          engineerName: dtrCase.assignee.name,
-          caseType: 'DTR',
-          caseNumber: dtrCase.caseNumber,
-          createdBy: dtrCase.creator?.email,
-        }).catch((err) => console.error('DTR assignment email error:', err));
+        try {
+          await sendAssignmentEmail({
+            to: dtrCase.assignee.email,
+            engineerName: dtrCase.assignee.name,
+            caseType: 'DTR',
+            caseNumber: dtrCase.caseNumber,
+            createdBy: dtrCase.creator?.email,
+          });
+          console.log(`Assignment email sent successfully to ${dtrCase.assignee.email} for DTR ${dtrCase.caseNumber}`);
+        } catch (err) {
+          console.error('DTR assignment email error:', err);
+        }
       }
     }
 
@@ -458,13 +463,18 @@ export async function updateDtrCase(req: AuthRequest, res: Response) {
       }
 
       if (prefs.emailCaseAssigned) {
-        sendAssignmentEmail({
-          to: dtrCase.assignee.email,
-          engineerName: dtrCase.assignee.name,
-          caseType: 'DTR',
-          caseNumber: dtrCase.caseNumber,
-          createdBy: dtrCase.creator?.email,
-        }).catch((err) => console.error('DTR reassignment email error:', err));
+        try {
+          await sendAssignmentEmail({
+            to: dtrCase.assignee.email,
+            engineerName: dtrCase.assignee.name,
+            caseType: 'DTR',
+            caseNumber: dtrCase.caseNumber,
+            createdBy: dtrCase.creator?.email,
+          });
+          console.log(`Assignment email sent successfully to ${dtrCase.assignee.email} for DTR ${dtrCase.caseNumber}`);
+        } catch (err) {
+          console.error('DTR reassignment email error:', err);
+        }
       }
     }
 
@@ -583,13 +593,18 @@ export async function assignDtrCase(req: AuthRequest, res: Response) {
     });
 
     if (dtrCase.assignee?.email) {
-      sendAssignmentEmail({
-        to: dtrCase.assignee.email,
-        engineerName: dtrCase.assignee.name,
-        caseType: 'DTR',
-        caseNumber: dtrCase.caseNumber,
-        createdBy: dtrCase.creator?.email,
-      }).catch((err) => console.error('DTR assign endpoint email error:', err));
+      try {
+        await sendAssignmentEmail({
+          to: dtrCase.assignee.email,
+          engineerName: dtrCase.assignee.name,
+          caseType: 'DTR',
+          caseNumber: dtrCase.caseNumber,
+          createdBy: dtrCase.creator?.email,
+        });
+        console.log(`Assignment email sent successfully to ${dtrCase.assignee.email} for DTR ${dtrCase.caseNumber}`);
+      } catch (err) {
+        console.error('DTR assign endpoint email error:', err);
+      }
     }
 
     return sendSuccess(res, { case: dtrCase }, 'DTR case assigned successfully');

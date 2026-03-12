@@ -224,10 +224,10 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId 
           });
 
           if (createResult.success) {
-            // Reload parts list to include the new part
+            // Reload parts list in background to avoid delaying RMA submission.
             const projector = getProjectorByAudi(selectedSite, formData.audiNo);
             if (projector?.modelNo) {
-              await loadPartsForModel(projector.modelNo);
+              void loadPartsForModel(projector.modelNo);
             }
             console.log('Custom part added successfully:', createResult.data?.part);
           } else {

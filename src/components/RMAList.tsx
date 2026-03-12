@@ -751,11 +751,27 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
         currentUser={currentUser}
         onClose={() => setShowForm(false)}
         onSubmit={async (data) => {
+          const submitStartedAt = performance.now();
           const result = await rmaService.createRMACase(data);
           if (result.success) {
+            const createdCase = result.data?.case;
+            if (createdCase) {
+              setAllRMACases((prev) => {
+                const withoutDuplicate = prev.filter((item) => item.id !== createdCase.id);
+                return [createdCase, ...withoutDuplicate];
+              });
+            }
             setShowForm(false);
-            // Reload all cases after create
-            await fetchAllCases();
+            if (process.env.NODE_ENV === 'development') {
+              const afterSubmitMs = Math.round(performance.now() - submitStartedAt);
+              requestAnimationFrame(() => {
+                const uiReadyMs = Math.round(performance.now() - submitStartedAt);
+                console.log('[RMA create UI timings]', {
+                  createRequestMs: afterSubmitMs,
+                  uiReadyMs,
+                });
+              });
+            }
           } else {
             alert(result.message || 'Failed to create RMA case');
           }

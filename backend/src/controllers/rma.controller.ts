@@ -165,6 +165,10 @@ export async function getRmaCaseById(req: AuthRequest, res: Response) {
 // Create new RMA case
 export async function createRmaCase(req: AuthRequest, res: Response) {
   try {
+    const isDev = process.env.NODE_ENV === 'development';
+    const requestStartedAt = Date.now();
+    const timings: Record<string, number> = {};
+
     const {
       rmaType,
       callLogNumber,
@@ -216,6 +220,7 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
       return sendError(res, `Invalid RMA type. Must be one of: RMA, SRMA, RMA_CL, Lamps`, 400);
     }
 
+    const createStartedAt = Date.now();
     // Create RMA case
     const rmaCase = await prisma.rmaCase.create({
       data: {
@@ -265,8 +270,10 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
         },
       },
     });
+    timings.rmaCreateMs = Date.now() - createStartedAt;
 
     // Create audit log
+    const auditStartedAt = Date.now();
     await prisma.auditLog.create({
       data: {
         caseId: rmaCase.id,
@@ -276,9 +283,11 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
         performedBy: req.user!.userId,
       },
     });
+    timings.auditLogMs = Date.now() - auditStartedAt;
 
     // Send notification + email if assigned
     if (assignedTo && rmaCase.assignee?.email) {
+      const notificationStartedAt = Date.now();
       await prisma.notification.create({
         data: {
           userId: assignedTo,
@@ -289,22 +298,31 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
           caseType: 'RMA',
         },
       });
+      timings.notificationMs = Date.now() - notificationStartedAt;
 
-      try {
-        await sendAssignmentEmail({
-          to: rmaCase.assignee.email,
-          engineerName: rmaCase.assignee.name,
-          caseType: 'RMA',
-          caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
-          createdBy: rmaCase.creator?.email,
+      // Fire-and-forget email so SMTP latency never blocks RMA creation response.
+      void sendAssignmentEmail({
+        to: rmaCase.assignee.email,
+        engineerName: rmaCase.assignee.name,
+        caseType: 'RMA',
+        caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
+        createdBy: rmaCase.creator?.email,
+      })
+        .then(() => {
+          console.log(`Assignment email sent successfully to ${rmaCase.assignee?.email} for RMA ${rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A'}`);
+        })
+        .catch((err: any) => {
+          console.error('RMA assignment email error:', err);
         });
-        console.log(`Assignment email sent successfully to ${rmaCase.assignee.email} for RMA ${rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A'}`);
-      } catch (err: any) {
-        console.error('RMA assignment email error:', err);
-        // Don't fail the request if email fails, but log it
-      }
     } else if (assignedTo && !rmaCase.assignee?.email) {
       console.warn(`RMA assignment email not sent: assignee email not found for RMA ${rmaCase.id}`);
+    }
+
+    if (isDev) {
+      console.log('[RMA create timings]', {
+        ...timings,
+        totalMs: Date.now() - requestStartedAt,
+      });
     }
 
     return sendSuccess(res, { case: rmaCase }, 'RMA case created successfully', 201);

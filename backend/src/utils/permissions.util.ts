@@ -46,7 +46,6 @@ export type UserRole = 'staff' | 'engineer' | 'manager' | 'admin';
 const rolePermissions: Record<UserRole, Permission[]> = {
   staff: [
     // View-only access
-    'dtr:view',
     'rma:view',
     'analytics:view',
     'master:view',

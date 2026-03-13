@@ -14,6 +14,7 @@ interface AnalyticsProps {
 
 export function Analytics({ currentUser }: AnalyticsProps) {
   const { users } = useUsersAPI();
+  const canViewDtr = ((currentUser?.role || '').toString().toLowerCase() !== 'staff');
   const [allDTRCases, setAllDTRCases] = useState<any[]>([]);
   const [allRMACases, setAllRMACases] = useState<any[]>([]);
   const [loadingAllCases, setLoadingAllCases] = useState(true);
@@ -102,6 +103,42 @@ export function Analytics({ currentUser }: AnalyticsProps) {
         } catch (dtrError) {
           console.error('Error loading DTR cases:', dtrError);
           setAllDTRCases([]);
+        // Fetch all DTR cases (not available to staff)
+        const dtrCases: any[] = [];
+        let dtrTotal = 0;
+        if (canViewDtr) {
+          let dtrPage = 1;
+          try {
+            const firstDTRResponse = await dtrService.getAllDTRCases({ page: 1, limit: 100 });
+            console.log('DTR Response:', firstDTRResponse);
+
+            if (firstDTRResponse && firstDTRResponse.success && firstDTRResponse.data) {
+              const cases = firstDTRResponse.data.cases || [];
+              dtrCases.push(...cases);
+              dtrTotal = firstDTRResponse.data.total || cases.length;
+
+              if (dtrTotal > cases.length) {
+                while (dtrCases.length < dtrTotal) {
+                  dtrPage++;
+                  try {
+                    const response = await dtrService.getAllDTRCases({ page: dtrPage, limit: 100 });
+                    if (response && response.success && response.data && response.data.cases && response.data.cases.length > 0) {
+                      dtrCases.push(...response.data.cases);
+                    } else {
+                      break;
+                    }
+                  } catch (pageError) {
+                    console.error(`Error loading DTR page ${dtrPage}:`, pageError);
+                    break;
+                  }
+                }
+              }
+            } else {
+              console.warn('DTR response was not successful or missing data:', firstDTRResponse);
+            }
+          } catch (dtrError) {
+            console.error('Error loading DTR cases:', dtrError);
+          }
         }
 
         try {
@@ -122,7 +159,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     };
     
     fetchAllCases();
-  }, []); // Only run once on mount
+  }, [canViewDtr]); // Re-evaluate when role changes
 
   // Helper function to safely get site name
   const getSiteName = (site: any): string => {
@@ -185,10 +222,12 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   // Get unique sites for filter dropdown
   const uniqueSites = useMemo(() => {
     const sites = new Set<string>();
-    allDTRCases.forEach(dtr => sites.add(getSiteName(dtr.site)));
+    if (canViewDtr) {
+      allDTRCases.forEach(dtr => sites.add(getSiteName(dtr.site)));
+    }
     allRMACases.forEach(rma => sites.add(getRMASiteName(rma)));
     return Array.from(sites).sort();
-  }, [allDTRCases, allRMACases]);
+  }, [allDTRCases, allRMACases, canViewDtr]);
 
   // Helper function to get engineer name from ID
   const getEngineerName = (engineerId: string): string => {
@@ -203,10 +242,12 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   // Get unique engineers for filter dropdown (with names)
   const uniqueEngineers = useMemo(() => {
     const engineerIds = new Set<string>();
-    allDTRCases.forEach(dtr => {
-      if (dtr.assignedTo) engineerIds.add(dtr.assignedTo);
-      if (dtr.createdBy) engineerIds.add(dtr.createdBy);
-    });
+    if (canViewDtr) {
+      allDTRCases.forEach(dtr => {
+        if (dtr.assignedTo) engineerIds.add(dtr.assignedTo);
+        if (dtr.createdBy) engineerIds.add(dtr.createdBy);
+      });
+    }
     allRMACases.forEach(rma => {
       if (rma.assignedTo) engineerIds.add(rma.assignedTo);
       if (rma.createdBy) engineerIds.add(rma.createdBy);
@@ -219,7 +260,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
         name: getEngineerName(id),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allDTRCases, allRMACases, users]);
+  }, [allDTRCases, allRMACases, users, canViewDtr]);
 
   // Calculate days between dates (validates dates and ensures correct order)
   const daysBetween = (date1: string | null | undefined, date2: string | null | undefined): number | null => {
@@ -409,10 +450,12 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   ], [rmaCases]);
 
   // RMA Type breakdown
-  const rmaByType = useMemo(() => [
+  // Backend/API uses enum values: 'RMA', 'SRMA', 'RMA_CL', 'Lamps'
+  // Display label for RMA_CL is "RMA CL"
+  const rmaByType = [
     { name: 'RMA', count: rmaCases.filter(r => r.rmaType === 'RMA').length, color: '#3b82f6' },
     { name: 'SRMA', count: rmaCases.filter(r => r.rmaType === 'SRMA').length, color: '#8b5cf6' },
-    { name: 'RMA CL', count: rmaCases.filter(r => r.rmaType === 'RMA CL').length, color: '#f59e0b' },
+    { name: 'RMA CL', count: rmaCases.filter(r => r.rmaType === 'RMA_CL').length, color: '#f59e0b' },
     { name: 'Lamps', count: rmaCases.filter(r => r.rmaType === 'Lamps').length, color: '#10b981' },
   ], [rmaCases]);
 
@@ -613,6 +656,18 @@ export function Analytics({ currentUser }: AnalyticsProps) {
 
   // Export to Excel (CSV)
   const exportToExcel = () => {
+    const dtrSection = canViewDtr
+      ? ([
+          ['DTR Statistics'],
+          ['Total DTR Cases', totalDTR],
+          ['Open Cases', dtrCases.filter(d => d.callStatus === 'open').length],
+          ['In Progress', dtrCases.filter(d => d.callStatus === 'in_progress').length],
+          ['Closed Cases', dtrCases.filter(d => d.callStatus === 'closed').length],
+          ['Escalated to RMA', dtrCases.filter(d => d.callStatus === 'escalated').length],
+          [],
+        ] as (string | number)[][])
+      : ([] as (string | number)[][]);
+
     const csv = [
       ['Analytics Report - Generated on ' + new Date().toLocaleString()],
       ['Filters Applied:'],
@@ -620,13 +675,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       [`Site: ${selectedSite === 'all' ? 'All Sites' : selectedSite}`],
       [`Engineer: ${selectedEngineer === 'all' ? 'All Engineers' : selectedEngineer}`],
       [],
-      ['DTR Statistics'],
-      ['Total DTR Cases', totalDTR],
-      ['Open Cases', dtrCases.filter(d => d.callStatus === 'open').length],
-      ['In Progress', dtrCases.filter(d => d.callStatus === 'in_progress').length],
-      ['Closed Cases', dtrCases.filter(d => d.callStatus === 'closed').length],
-      ['Escalated to RMA', dtrCases.filter(d => d.callStatus === 'escalated').length],
-      [],
+      ...dtrSection,
       ['RMA Statistics'],
       ['Total RMA Cases', totalRMA],
       ['Open RMAs', rmaCases.filter(r => r.status === 'open').length],
@@ -825,14 +874,16 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       )}
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <p className="text-sm text-gray-600 mb-2">Total DTR Cases</p>
-          <p className="text-2xl font-bold text-blue-600">{totalDTR}</p>
-          <p className="text-xs text-gray-500 mt-2">
-            {hasActiveFilters ? 'Filtered results' : 'All time'}
-          </p>
-        </div>
+      <div className={`grid grid-cols-1 ${canViewDtr ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
+        {canViewDtr && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <p className="text-sm text-gray-600 mb-2">Total DTR Cases</p>
+            <p className="text-2xl font-bold text-blue-600">{totalDTR}</p>
+            <p className="text-xs text-gray-500 mt-2">
+              {hasActiveFilters ? 'Filtered results' : 'All time'}
+            </p>
+          </div>
+        )}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <p className="text-sm text-gray-600 mb-2">Total RMA Cases</p>
           <p className="text-2xl font-bold text-purple-600">{totalRMA}</p>
@@ -910,14 +961,16 @@ export function Analytics({ currentUser }: AnalyticsProps) {
             <YAxis />
             <Tooltip />
             <Legend />
-            <Line 
-              type="monotone" 
-              dataKey="dtr" 
-              stroke="#3b82f6" 
-              strokeWidth={2}
-              name="DTR Cases"
-              dot={{ r: 4 }}
-            />
+            {canViewDtr && (
+              <Line 
+                type="monotone" 
+                dataKey="dtr" 
+                stroke="#3b82f6" 
+                strokeWidth={2}
+                name="DTR Cases"
+                dot={{ r: 4 }}
+              />
+            )}
             <Line 
               type="monotone" 
               dataKey="rma" 
@@ -933,27 +986,29 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* DTR Status Distribution */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-gray-900 mb-4">DTR Status Distribution</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie
-                data={dtrByStatus}
-                dataKey="count"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={80}
-                label={(entry) => `${entry.name}: ${entry.count}`}
-              >
-                {dtrByStatus.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+        {canViewDtr && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h3 className="text-gray-900 mb-4">DTR Status Distribution</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={dtrByStatus}
+                  dataKey="count"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  label={(entry) => `${entry.name}: ${entry.count}`}
+                >
+                  {dtrByStatus.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         {/* RMA Status Distribution */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -1026,6 +1081,40 @@ export function Analytics({ currentUser }: AnalyticsProps) {
                   />
                   <span className="text-sm text-gray-700">
                     {entry.name}: <span className="font-medium">{entry.count}</span>
+          <div className="grid grid-cols-1 md:grid-cols-[2fr,minmax(0,1fr)] gap-4 items-center">
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={rmaByType}
+                    dataKey="count"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={80}
+                    labelLine={false}
+                  >
+                    {rmaByType.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-2">
+              {rmaByType.map((entry) => (
+                <div key={entry.name} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-block w-3 h-3 rounded-full"
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    <span className="text-gray-800">{entry.name}</span>
+                  </div>
+                  <span className="text-gray-600">
+                    {entry.count}
                   </span>
                 </div>
               ))}
@@ -1049,19 +1138,21 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       </div>
 
       {/* Case Severity Trends */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-gray-900 mb-4">DTR Case Severity Distribution</h3>
-        <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={severityData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="severity" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="count" fill="#6366f1" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      {canViewDtr && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h3 className="text-gray-900 mb-4">DTR Case Severity Distribution</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={severityData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="severity" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="count" fill="#6366f1" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* Top 20 Projectors by RMA Count */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">

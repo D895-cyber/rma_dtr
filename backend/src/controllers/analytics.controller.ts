@@ -28,8 +28,9 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
         return sendSuccess(res, cached.payload);
       }
     }
+    const canIncludeDtr = userRole !== 'staff';
 
-    // DTR Statistics
+    // DTR Statistics (not shown to staff)
     const [
       totalDtrCases,
       openDtrCases,
@@ -37,14 +38,16 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
       closedDtrCases,
       criticalDtrCases,
       myAssignedDtrCases,
-    ] = await Promise.all([
-      prisma.dtrCase.count({ where: pvrWhere }),
-      prisma.dtrCase.count({ where: { ...pvrWhere, callStatus: 'open' } }),
-      prisma.dtrCase.count({ where: { ...pvrWhere, callStatus: 'in_progress' } }),
-      prisma.dtrCase.count({ where: { ...pvrWhere, callStatus: 'closed' } }),
-      prisma.dtrCase.count({ where: { ...pvrWhere, caseSeverity: 'critical' } }),
-      prisma.dtrCase.count({ where: { ...pvrWhere, assignedTo: userId } }),
-    ]);
+    ] = canIncludeDtr
+      ? await Promise.all([
+          prisma.dtrCase.count({ where: pvrWhere }),
+          prisma.dtrCase.count({ where: { ...pvrWhere, callStatus: 'open' } }),
+          prisma.dtrCase.count({ where: { ...pvrWhere, callStatus: 'in_progress' } }),
+          prisma.dtrCase.count({ where: { ...pvrWhere, callStatus: 'closed' } }),
+          prisma.dtrCase.count({ where: { ...pvrWhere, caseSeverity: 'critical' } }),
+          prisma.dtrCase.count({ where: { ...pvrWhere, assignedTo: userId } }),
+        ])
+      : [0, 0, 0, 0, 0, 0];
 
     // RMA Statistics
     const [
@@ -63,21 +66,25 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
       prisma.rmaCase.count({ where: { ...pvrWhere, assignedTo: userId } }),
     ]);
 
-    // Severity breakdown (DTR)
-    const severityBreakdown = await prisma.dtrCase.groupBy({
-      by: ['caseSeverity'],
-      _count: true,
-      where: pvrWhere,
-    });
+    // Severity breakdown (DTR) (not shown to staff)
+    const severityBreakdown = canIncludeDtr
+      ? await prisma.dtrCase.groupBy({
+          by: ['caseSeverity'],
+          _count: true,
+          where: pvrWhere,
+        })
+      : [];
 
     // Recent window (last 7 days)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     const [recentDtrCases, recentRmaCases] = await Promise.all([
-      prisma.dtrCase.count({
-        where: { ...pvrWhere, createdAt: { gte: sevenDaysAgo } },
-      }),
+      canIncludeDtr
+        ? prisma.dtrCase.count({
+            where: { ...pvrWhere, createdAt: { gte: sevenDaysAgo } },
+          })
+        : Promise.resolve(0),
       prisma.rmaCase.count({
         where: { ...pvrWhere, createdAt: { gte: sevenDaysAgo } },
       }),
@@ -88,6 +95,10 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
       ? [[], []]
       : await Promise.all([
           prisma.dtrCase.findMany({
+    // Get recent case objects (last 5) for dashboard display
+    const [recentDtrCasesList, recentRmaCasesList] = await Promise.all([
+      canIncludeDtr
+        ? prisma.dtrCase.findMany({
             where: pvrWhere,
             take: 5,
             orderBy: { createdAt: 'desc' },
@@ -118,12 +129,37 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
                   role: true,
                 },
               },
+              creator: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+              assignee: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+                },
             },
           }),
           prisma.rmaCase.findMany({
             where: pvrWhere,
             take: 5,
             orderBy: { createdAt: 'desc' },
+          })
+        : Promise.resolve([]),
+      prisma.rmaCase.findMany({
+        where: pvrWhere,
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          site: true,
+          audi: {
             include: {
               site: true,
               audi: {

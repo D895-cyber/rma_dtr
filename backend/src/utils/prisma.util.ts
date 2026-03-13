@@ -1,4 +1,8 @@
 import { PrismaClient } from '@prisma/client';
+import dotenv from 'dotenv';
+
+// Ensure env vars are loaded before reading DATABASE_URL.
+dotenv.config();
 
 // Singleton pattern for Prisma Client
 // Important for serverless functions to avoid connection pool exhaustion

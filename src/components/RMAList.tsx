@@ -1055,7 +1055,8 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             >
               <option value="all">All Types</option>
               <option value="RMA">RMA</option>
-              <option value="CI RMA">CI RMA</option>
+              {/* CI RMA is now represented as RMA_CL in data */}
+              <option value="RMA_CL">CI RMA</option>
               <option value="Lamps">Lamps</option>
             </select>
           </div>
@@ -1091,7 +1092,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                   dateFrom || dateTo ? `Date: ${dateFrom ? formatDate(dateFrom) : 'Any'} to ${dateTo ? formatDate(dateTo) : 'Any'}` : null,
                   yearFilter !== 'all' ? `Year: ${yearFilter}` : null,
                   statusFilter !== 'all' ? `Status: ${statusFilter === 'pending' ? 'Pending (Yet to Deliver + In Transit)' : statusFilter}` : null,
-                  typeFilter !== 'all' ? `Type: ${typeFilter}` : null,
+                  typeFilter !== 'all' ? `Type: ${typeFilter === 'RMA_CL' ? 'CI RMA' : typeFilter}` : null,
                   dnrFilter ? 'DNR (Do Not Return)' : null,
                   searchTerm ? `Search: "${searchTerm}"` : null
                 ].filter(Boolean).join(', ')}

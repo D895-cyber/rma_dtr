@@ -29,6 +29,19 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [allRMACases, setAllRMACases] = useState<any[]>([]);
   const [loadingAllCases, setLoadingAllCases] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCases, setTotalCases] = useState(0);
+  const [serverStats, setServerStats] = useState<{
+    total: number;
+    open: number;
+    rmaRaised: number;
+    inTransit: number;
+    pending: number;
+    closed: number;
+    cancelled: number;
+    dnr: number;
+  } | null>(null);
+  const pageSize = 50;
   
   // Export dialog state
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -83,35 +96,33 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
     new Set(exportFields.map(f => f.key))
   );
 
-  // Function to load all RMA cases
-  const fetchAllCases = async () => {
+  // Server-driven pagination for list rendering.
+  const fetchAllCases = async (pageToLoad: number = 1) => {
     setLoadingAllCases(true);
     try {
-      const allCases: any[] = [];
-      let page = 1;
-      let totalCases = 0;
-      
-      // First, get the total count
-      const firstResponse = await rmaService.getAllRMACases({ page: 1, limit: 100 });
-      if (firstResponse.success && firstResponse.data) {
-        allCases.push(...firstResponse.data.cases);
-        totalCases = firstResponse.data.total;
-        
-        // Continue fetching remaining pages
-        while (allCases.length < totalCases && firstResponse.data.cases.length > 0) {
-          page++;
-          const response = await rmaService.getAllRMACases({ page, limit: 100 });
-          if (response.success && response.data && response.data.cases.length > 0) {
-            allCases.push(...response.data.cases);
-          } else {
-            break;
-          }
-        }
+      const parsedAgeDays =
+        ageFilter !== 'all' && Number.isFinite(Number(ageFilter)) ? Number(ageFilter) : undefined;
+
+      const response = await rmaService.getAllRMACases({
+        page: pageToLoad,
+        limit: pageSize,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        rmaType: typeFilter !== 'all' ? typeFilter : undefined,
+        search: debouncedSearchTerm || undefined,
+        includeStats: true,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        year: !dateFrom && !dateTo && yearFilter !== 'all' ? yearFilter : undefined,
+        dnr: dnrFilter || undefined,
+        ageDays: parsedAgeDays,
+      });
+      if (response.success && response.data) {
+        setAllRMACases(response.data.cases || []);
+        setTotalCases(response.data.total || 0);
+        setCurrentPage(response.data.page || pageToLoad);
+        setServerStats(response.data.stats || null);
+        setIsInitialLoad(false);
       }
-      
-      console.log(`RMAList: Loaded ${allCases.length} RMA cases (total: ${totalCases})`);
-      setAllRMACases(allCases);
-      setIsInitialLoad(false);
     } catch (error) {
       console.error('Error loading all RMA cases:', error);
     } finally {
@@ -119,10 +130,15 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
     }
   };
 
-  // Load ALL RMA cases once on mount (no pagination)
+  // Reload page data when server-side filters/search/page change.
   useEffect(() => {
-    fetchAllCases();
-  }, []); // Only run once on mount
+    void fetchAllCases(currentPage);
+  }, [currentPage, statusFilter, typeFilter, debouncedSearchTerm, dateFrom, dateTo, yearFilter, dnrFilter, ageFilter]);
+
+  // Reset to first page when server-side filters change.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, typeFilter, debouncedSearchTerm, dateFrom, dateTo, yearFilter, dnrFilter, ageFilter]);
 
   // Open case from global search when list has loaded
   useEffect(() => {
@@ -133,15 +149,6 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
       onOpenCaseHandled?.();
     }
   }, [openCaseId, allRMACases, onOpenCaseHandled]);
-
-  // Debug: Log when dialog state changes
-  useEffect(() => {
-    console.log('showExportDialog state changed:', showExportDialog);
-  }, [showExportDialog]);
-
-  useEffect(() => {
-    console.log('showExportDialog state changed:', showExportDialog);
-  }, [showExportDialog]);
 
   // Helper function to format date for display
   const formatDate = (dateStr: string | null | undefined): string => {
@@ -260,116 +267,39 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
     ageFilter !== 'all' ||
     dnrFilter;
 
-  // Apply backend filters (status, type, search, dnr) - these are applied server-side when loading
-  // But since we load all cases, we need to apply them client-side too
-  // Only show results if there's a search term or active filters
-  const backendFilteredCases = hasActiveFilters ? allRMACases.filter(r => {
-    if (statusFilter !== 'all') {
-      if (statusFilter === 'pending') {
-        // Pending includes both "Yet to Deliver" and "In Transit"
-        if (r.status !== 'rma_raised_yet_to_deliver' && r.status !== 'faulty_in_transit_to_cds') {
-          return false;
-        }
-      } else if (r.status !== statusFilter) {
-        return false;
-      }
-    }
-    if (typeFilter !== 'all' && r.rmaType !== typeFilter) return false;
-    // DNR filter - if active, only show cases where isDefectivePartDNR is true
-    if (dnrFilter && !r.isDefectivePartDNR) return false;
-    if (debouncedSearchTerm) {
-      const search = debouncedSearchTerm.toLowerCase();
-      const siteName = getSiteName(r.site || r.siteName);
-      const matchesSearch =
-        (r.rmaNumber?.toLowerCase() || '').includes(search) ||
-        (r.callLogNumber?.toLowerCase() || '').includes(search) ||
-        (r.rmaOrderNumber?.toLowerCase() || '').includes(search) ||
-        (siteName?.toLowerCase() || '').includes(search) ||
-        (r.productName?.toLowerCase() || '').includes(search) ||
-        (r.serialNumber?.toLowerCase() || '').includes(search) ||
-        (r.defectivePartName?.toLowerCase() || '').includes(search) ||
-        (r.defectivePartNumber?.toLowerCase() || '').includes(search) ||
-        (r.defectivePartSerial?.toLowerCase() || '').includes(search) ||
-        (r.replacedPartNumber?.toLowerCase() || '').includes(search) ||
-        (r.replacedPartSerial?.toLowerCase() || '').includes(search);
-      if (!matchesSearch) return false;
-    }
-    return true;
-  }) : [];
+  // Cases are already globally filtered server-side (across all pages), this page just renders current slice.
+  const filteredCases = allRMACases;
 
-  // Apply date range filter first (takes precedence over year filter)
-  const dateRangeFilteredCases = (dateFrom || dateTo)
-    ? backendFilteredCases.filter(r => isDateInRange(r.rmaRaisedDate, dateFrom, dateTo))
-    : backendFilteredCases;
-
-  // Apply year filter (only if date range is not active)
-  const yearFilteredCases = (dateFrom || dateTo)
-    ? dateRangeFilteredCases // Date range takes precedence
-    : (yearFilter === 'all'
-        ? dateRangeFilteredCases
-        : dateRangeFilteredCases.filter(r => getYearFromDate(r.rmaRaisedDate) === Number(yearFilter)));
-
-  // For statistics: show ALL cases when no filters are applied, otherwise show filtered cases
-  const casesForStats = !hasActiveFilters ? allRMACases : yearFilteredCases;
-
-  // Calculate statistics
+  // Prefer backend aggregate stats (global filtered dataset), fallback to current page data.
   const rmaStats = useMemo(() => {
-    const rmaRaised = casesForStats.filter(r => r.status === 'rma_raised_yet_to_deliver').length;
-    const inTransit = casesForStats.filter(r => r.status === 'faulty_in_transit_to_cds').length;
-    const stats = {
-      total: casesForStats.length,
-      open: casesForStats.filter(r => r.status === 'open').length,
+    if (serverStats) return serverStats;
+    const rmaRaised = filteredCases.filter(r => r.status === 'rma_raised_yet_to_deliver').length;
+    const inTransit = filteredCases.filter(r => r.status === 'faulty_in_transit_to_cds').length;
+    return {
+      total: filteredCases.length,
+      open: filteredCases.filter(r => r.status === 'open').length,
       rmaRaised,
       inTransit,
-      pending: rmaRaised + inTransit, // Combined count of Yet to Deliver and In Transit
-      closed: casesForStats.filter(r => r.status === 'closed').length,
-      cancelled: casesForStats.filter(r => r.status === 'cancelled').length,
-      dnr: casesForStats.filter(r => r.isDefectivePartDNR === true).length,
+      pending: rmaRaised + inTransit,
+      closed: filteredCases.filter(r => r.status === 'closed').length,
+      cancelled: filteredCases.filter(r => r.status === 'cancelled').length,
+      dnr: filteredCases.filter(r => r.isDefectivePartDNR === true).length,
     };
-    
-    // Debug log
-    if (process.env.NODE_ENV === 'development') {
-      console.log('RMA Statistics:', {
-        allRMACases: allRMACases.length,
-        casesForStats: casesForStats.length,
-        hasActiveFilters,
-        stats
-      });
+  }, [serverStats, filteredCases]);
+
+  // Export scope preview:
+  // - active filters/search => export filtered view
+  // - no filters/search => export full data
+  const exportBaseCases = hasActiveFilters ? filteredCases : allRMACases;
+  const exportPreviewCount = useMemo(() => {
+    if (!hasActiveFilters && !exportDateFrom && !exportDateTo) {
+      return totalCases;
     }
-    
-    return stats;
-  }, [casesForStats, allRMACases.length, hasActiveFilters]);
-
-  // Apply age filter (client-side only, as it's not a backend filter)
-  // Note: status, type, and search are already applied in backendFilteredCases
-  const filteredCases = yearFilteredCases.filter((rma) => {
-    // Age / overdue filter (based on shippedDate and status)
-    const ageDays =
-      ageFilter === 'all'
-        ? null
-        : Number.isFinite(Number(ageFilter))
-        ? Number(ageFilter)
-        : null;
-
-    let matchesAge = true;
-    if (ageDays !== null) {
-      if (rma.status !== 'faulty_in_transit_to_cds' || !rma.shippedDate) {
-        // Age filter only applies to Faulty in Transit to CDS with a shipped date
-        matchesAge = false;
-      } else {
-        const shipped = new Date(rma.shippedDate);
-        if (Number.isNaN(shipped.getTime())) {
-          matchesAge = false;
-        } else {
-          const diffMs = Date.now() - shipped.getTime();
-          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-          matchesAge = diffDays >= ageDays;
-        }
-      }
+    if (exportDateFrom || exportDateTo) {
+      return exportBaseCases.filter((r) => isDateInRange(r.rmaRaisedDate, exportDateFrom, exportDateTo)).length;
     }
-
-    return matchesAge;
-  });
+    return exportBaseCases.length;
+  }, [exportBaseCases, exportDateFrom, exportDateTo, hasActiveFilters, totalCases]);
 
   // Helper to escape CSV values (handles commas, quotes, newlines)
   const escapeCsvValue = (value: any): string => {
@@ -515,56 +445,97 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
         return;
       }
 
-      // Filter cases by export date range if set
-      let casesToExport = allRMACases;
-      if (exportDateFrom || exportDateTo) {
-        casesToExport = allRMACases.filter(r => isDateInRange(r.rmaRaisedDate, exportDateFrom, exportDateTo));
-      }
+      const resolveExportCases = async () => {
+        const merged: any[] = [];
+        let exportPage = 1;
+        const exportLimit = 100;
+        let total = 0;
+        const parsedAgeDays =
+          ageFilter !== 'all' && Number.isFinite(Number(ageFilter)) ? Number(ageFilter) : undefined;
 
-      if (casesToExport.length === 0) {
-        alert('No cases found matching the selected criteria.');
-        return;
-      }
+        do {
+          // eslint-disable-next-line no-await-in-loop
+          const res = await rmaService.getAllRMACases({
+            page: exportPage,
+            limit: exportLimit,
+            status: statusFilter !== 'all' ? statusFilter : undefined,
+            rmaType: typeFilter !== 'all' ? typeFilter : undefined,
+            search: debouncedSearchTerm || undefined,
+            dateFrom: dateFrom || undefined,
+            dateTo: dateTo || undefined,
+            year: !dateFrom && !dateTo && yearFilter !== 'all' ? yearFilter : undefined,
+            dnr: dnrFilter || undefined,
+            ageDays: parsedAgeDays,
+          });
+          if (!res.success || !res.data) break;
+          const pageCases = res.data.cases || [];
+          if (pageCases.length === 0) break;
+          merged.push(...pageCases);
+          total = Number(res.data.total || merged.length);
+          exportPage += 1;
+        } while (merged.length < total);
 
-      // Get selected fields in order
-      const selectedFields = exportFields.filter(f => selectedExportFields.has(f.key));
-      
-      // Build CSV header
-      const headers = selectedFields.map(f => f.label);
-      
-      // Build CSV rows
-      const rows = casesToExport.map(rma => {
-        return selectedFields.map(f => escapeCsvValue(getFieldValue(rma, f.key)));
+        return merged;
+      };
+
+      const run = async () => {
+        let casesToExport = await resolveExportCases();
+
+        // Apply export dialog date range on top of the base export set (if provided)
+        if (exportDateFrom || exportDateTo) {
+          casesToExport = casesToExport.filter(r => isDateInRange(r.rmaRaisedDate, exportDateFrom, exportDateTo));
+        }
+
+        if (casesToExport.length === 0) {
+          alert('No cases found matching the selected criteria.');
+          return;
+        }
+
+        // Get selected fields in order
+        const selectedFields = exportFields.filter(f => selectedExportFields.has(f.key));
+
+        // Build CSV header
+        const headers = selectedFields.map(f => f.label);
+
+        // Build CSV rows
+        const rows = casesToExport.map(rma => {
+          return selectedFields.map(f => escapeCsvValue(getFieldValue(rma, f.key)));
+        });
+
+        // Combine header and rows
+        const csv = [
+          headers.join(','),
+          ...rows.map(row => row.join(','))
+        ].join('\n');
+
+        // Generate filename with date range if applicable
+        let filename = `rma-cases-${new Date().toISOString().split('T')[0]}`;
+        if (exportDateFrom || exportDateTo) {
+          const fromStr = exportDateFrom ? exportDateFrom.replace(/-/g, '') : 'all';
+          const toStr = exportDateTo ? exportDateTo.replace(/-/g, '') : 'all';
+          filename += `-${fromStr}-to-${toStr}`;
+        }
+        filename += '.csv';
+
+        // Create and download CSV
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        // Close dialog after export
+        setShowExportDialog(false);
+      };
+
+      void run().catch((error) => {
+        console.error('Export error:', error);
+        alert('Failed to export CSV. Please check the console for details.');
       });
-
-      // Combine header and rows
-      const csv = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-      ].join('\n');
-      
-      // Generate filename with date range if applicable
-      let filename = `rma-cases-${new Date().toISOString().split('T')[0]}`;
-      if (exportDateFrom || exportDateTo) {
-        const fromStr = exportDateFrom ? exportDateFrom.replace(/-/g, '') : 'all';
-        const toStr = exportDateTo ? exportDateTo.replace(/-/g, '') : 'all';
-        filename += `-${fromStr}-to-${toStr}`;
-      }
-      filename += '.csv';
-      
-      // Create and download CSV
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      // Close dialog after export
-      setShowExportDialog(false);
     } catch (error) {
       console.error('Export error:', error);
       alert('Failed to export CSV. Please check the console for details.');
@@ -737,8 +708,8 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
           onClose={() => setSelectedRMA(null)}
           onUpdate={async (id, data, userEmail, action, details) => {
             await rmaService.updateRMACase(id, data);
-            // Reload all cases after update
-            await fetchAllCases();
+            // Reload current page after update
+            await fetchAllCases(currentPage);
           }}
         />
       );
@@ -1003,7 +974,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                         Filtering: {dateFrom ? formatDate(dateFrom) : 'Any'} to {dateTo ? formatDate(dateTo) : 'Any'}
                         {(dateFrom || dateTo) && (
                           <span className="block text-blue-600 mt-1">
-                            {yearFilteredCases.length} case{yearFilteredCases.length !== 1 ? 's' : ''} found
+                            {totalCases} case{totalCases !== 1 ? 's' : ''} found
                           </span>
                         )}
                       </>
@@ -1107,10 +1078,10 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-200">
           <div>
             <p className="text-sm text-gray-600">
-              Showing {filteredCases.length} case{filteredCases.length !== 1 ? 's' : ''}
-              {filteredCases.length !== allRMACases.length && (
+              Showing {filteredCases.length} case{filteredCases.length !== 1 ? 's' : ''} on page {currentPage}
+              {totalCases > 0 && (
                 <span className="text-blue-600 font-medium ml-1">
-                  (filtered from {allRMACases.length} total)
+                  (total {totalCases})
                 </span>
               )}
             </p>
@@ -1128,6 +1099,22 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             )}
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage <= 1 || loadingAllCases}
+                className="px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Prev
+              </button>
+              <button
+                onClick={() => setCurrentPage((prev) => (prev * pageSize < totalCases ? prev + 1 : prev))}
+                disabled={loadingAllCases || currentPage * pageSize >= totalCases}
+                className="px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
             <button
               onClick={handleExportOverdueToExcel}
               className="flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-red-700 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors border border-red-200 w-full sm:w-auto"
@@ -1138,9 +1125,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             </button>
             <button
               onClick={() => {
-                console.log('Export button clicked, setting showExportDialog to true');
                 setShowExportDialog(true);
-                console.log('Dialog state should be true now');
               }}
               className="flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors w-full sm:w-auto"
             >
@@ -1173,7 +1158,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
-              {!hasActiveFilters ? (
+              {filteredCases.length === 0 ? (
                 <tr>
                   <td colSpan={13} className="px-6 py-20">
                     <div className="flex flex-col items-center justify-center max-w-2xl mx-auto">
@@ -1192,10 +1177,10 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                       {/* Title and Description */}
                       <div className="text-center mb-8">
                         <h3 className="text-2xl font-bold text-gray-900 mb-3 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                          Start Your Search
+                          No RMA Cases Found
                         </h3>
                         <p className="text-base text-gray-600 leading-relaxed max-w-lg mx-auto">
-                          Enter a search term or apply filters to view RMA cases. You can search by RMA number, call log, site name, product, serial number, or part details.
+                          No records match the current page and filters. Try changing filters, search text, or page.
                         </p>
                       </div>
                       
@@ -1242,58 +1227,6 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                             <TrendingUp className="w-3.5 h-3.5" />
                             Age
                           </span>
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ) : filteredCases.length === 0 ? (
-                <tr>
-                  <td colSpan={13} className="px-6 py-20">
-                    <div className="flex flex-col items-center justify-center max-w-xl mx-auto">
-                      {/* Icon Container */}
-                      <div className="relative mb-8">
-                        <div className="relative inline-flex items-center justify-center">
-                          {/* Subtle background glow */}
-                          <div className="absolute inset-0 bg-gray-300 rounded-full blur-3xl opacity-30"></div>
-                          {/* Main icon circle */}
-                          <div className="relative bg-gradient-to-br from-gray-400 to-slate-500 rounded-full p-6 shadow-xl">
-                            <Package className="w-10 h-10 text-white" strokeWidth={2} />
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Title and Description */}
-                      <div className="text-center mb-8">
-                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">No results found</h3>
-                        <p className="text-base text-gray-600 dark:text-gray-400 leading-relaxed max-w-md mx-auto mb-6">
-                          No RMA cases match your current search criteria. Clear filters or create a new case.
-                        </p>
-                        <div className="flex flex-wrap items-center justify-center gap-3">
-                          <button
-                            onClick={() => {
-                              setSearchTerm('');
-                              setStatusFilter('all');
-                              setTypeFilter('all');
-                              setDateFrom('');
-                              setDateTo('');
-                              setYearFilter('all');
-                              setAgeFilter('all');
-                            }}
-                            className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-                          >
-                            <X className="w-4 h-4" />
-                            Clear filters
-                          </button>
-                          <ProtectedComponent permission="rma:create">
-                            <button
-                              onClick={() => setShowForm(true)}
-                              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-                            >
-                              <Plus className="w-4 h-4" />
-                              New RMA case
-                            </button>
-                          </ProtectedComponent>
                         </div>
                       </div>
                     </div>
@@ -1545,6 +1478,12 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                 ) : (
                   <p className="text-xs text-gray-500 mt-2">Leave blank to export all cases</p>
                 )}
+
+                <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <p className="text-xs text-gray-700">
+                    Export scope: {hasActiveFilters ? 'current filtered/search results' : 'all RMA data'} ({exportPreviewCount} row{exportPreviewCount !== 1 ? 's' : ''})
+                  </p>
+                </div>
               </div>
 
               {/* Field Selection Section */}

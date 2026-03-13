@@ -50,6 +50,13 @@ export const rmaService = {
     search?: string;
     page?: number;
     limit?: number;
+    includeAudit?: boolean;
+    includeStats?: boolean;
+    dateFrom?: string;
+    dateTo?: string;
+    year?: string;
+    dnr?: boolean;
+    ageDays?: number;
   }) {
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
@@ -58,9 +65,31 @@ export const rmaService = {
     if (filters?.search) params.append('search', filters.search);
     if (filters?.page) params.append('page', filters.page.toString());
     if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.includeAudit) params.append('includeAudit', 'true');
+    if (filters?.includeStats) params.append('includeStats', 'true');
+    if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
+    if (filters?.dateTo) params.append('dateTo', filters.dateTo);
+    if (filters?.year) params.append('year', filters.year);
+    if (filters?.dnr) params.append('dnr', 'true');
+    if (filters?.ageDays) params.append('ageDays', filters.ageDays.toString());
     
     const query = params.toString() ? `?${params.toString()}` : '';
-    return await api.get<{ cases: RMACase[]; total: number; page: number; limit: number }>(`/rma${query}`);
+    return await api.get<{
+      cases: RMACase[];
+      total: number;
+      page: number;
+      limit: number;
+      stats?: {
+        total: number;
+        open: number;
+        rmaRaised: number;
+        inTransit: number;
+        pending: number;
+        closed: number;
+        cancelled: number;
+        dnr: number;
+      };
+    }>(`/rma${query}`);
   },
 
   // Get RMA case by ID

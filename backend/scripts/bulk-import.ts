@@ -655,44 +655,11 @@ async function importRMACases(): Promise<ImportStats> {
         }
       }
 
-      // Handle duplicate call log numbers by appending suffix
       let callLogNumber = row.callLogNumber ? String(row.callLogNumber).trim() : null;
-      if (callLogNumber) {
-        let suffix = 0;
-        let uniqueCallLogNumber = callLogNumber;
-        
-        // Check if call log number already exists
-        while (await prisma.rmaCase.findFirst({ where: { callLogNumber: uniqueCallLogNumber } })) {
-          suffix++;
-          uniqueCallLogNumber = `${callLogNumber}${suffix}`;
-        }
-        
-        if (suffix > 0) {
-          console.log(`   ℹ️  Call Log #${callLogNumber} already exists, using ${uniqueCallLogNumber}`);
-        }
-        callLogNumber = uniqueCallLogNumber;
-      }
 
-      // Handle rmaNumber - check for duplicates and append suffix if duplicate
       let rmaNumber = row.rmaNumber ? String(row.rmaNumber).trim() : null;
-      
-      // If rmaNumber is "-" or empty, set to null
       if (rmaNumber === '-' || rmaNumber === '' || rmaNumber === '"-"') {
         rmaNumber = null;
-      } else if (rmaNumber) {
-        // Check if this rmaNumber already exists in database
-        let suffix = 0;
-        let uniqueRmaNumber = rmaNumber;
-        
-        while (await prisma.rmaCase.findFirst({ where: { rmaNumber: uniqueRmaNumber } })) {
-          suffix++;
-          uniqueRmaNumber = `${rmaNumber}-${suffix}`;
-        }
-        
-        if (suffix > 0) {
-          console.log(`   ℹ️  RMA number "${rmaNumber}" already exists, using ${uniqueRmaNumber}`);
-        }
-        rmaNumber = uniqueRmaNumber;
       }
 
       // Auto-populate part names from parts database based on part numbers

@@ -4,7 +4,7 @@
   "description": "CRM Backend API with PostgreSQL and Prisma",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon src/server.ts",
+    "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
@@ -32,7 +32,9 @@
     "fix:remaining": "ts-node scripts/fix-remaining-serials.ts",
     "check:rma-excel": "ts-node scripts/check-rma-excel.ts",
     "delete:rma": "ts-node scripts/delete-all-rma.ts",
-    "delete:dtr": "ts-node scripts/delete-all-dtr.ts"
+    "delete:dtr": "ts-node scripts/delete-all-dtr.ts",
+    "remove:duplicate-dtr": "ts-node scripts/remove-duplicate-dtr-cases.ts",
+    "perf:baseline": "ts-node scripts/perf-baseline.ts"
   },
   "keywords": [
     "crm",

@@ -45,40 +45,42 @@ export function useDTRCases() {
 
   const createCase = async (data: Partial<DTRCase>) => {
     const response = await dtrService.createDTRCase(data);
-    if (response.success) {
-      await loadCases();
+    if (response.success && response.data?.case) {
+      setCases((prev) => [response.data!.case as DTRCase, ...prev]);
+      setTotal((prev) => prev + 1);
+      void loadCases({ page: currentPage, limit: pageLimit });
     }
     return response;
   };
 
   const updateCase = async (id: string, data: Partial<DTRCase>) => {
     const response = await dtrService.updateDTRCase(id, data);
-    if (response.success) {
-      await loadCases();
+    if (response.success && response.data?.case) {
+      setCases((prev) => prev.map((item) => (item.id === id ? (response.data!.case as DTRCase) : item)));
     }
     return response;
   };
 
   const assignCase = async (id: string, assignedTo: string) => {
     const response = await dtrService.assignDTRCase(id, assignedTo);
-    if (response.success) {
-      await loadCases();
+    if (response.success && response.data?.case) {
+      setCases((prev) => prev.map((item) => (item.id === id ? (response.data!.case as DTRCase) : item)));
     }
     return response;
   };
 
   const updateStatus = async (id: string, status: DTRCase['callStatus']) => {
     const response = await dtrService.updateDTRStatus(id, status);
-    if (response.success) {
-      await loadCases();
+    if (response.success && response.data?.case) {
+      setCases((prev) => prev.map((item) => (item.id === id ? (response.data!.case as DTRCase) : item)));
     }
     return response;
   };
 
   const closeCase = async (id: string, finalRemarks: string) => {
     const response = await dtrService.closeDTRCase(id, finalRemarks);
-    if (response.success) {
-      await loadCases();
+    if (response.success && response.data?.case) {
+      setCases((prev) => prev.map((item) => (item.id === id ? (response.data!.case as DTRCase) : item)));
     }
     return response;
   };
@@ -136,24 +138,26 @@ export function useRMACases() {
 
   const createCase = async (data: Partial<RMACase>) => {
     const response = await rmaService.createRMACase(data);
-    if (response.success) {
-      await loadCases();
+    if (response.success && response.data?.case) {
+      setCases((prev) => [response.data!.case as RMACase, ...prev]);
+      setTotal((prev) => prev + 1);
+      void loadCases({ page: currentPage, limit: pageLimit });
     }
     return response;
   };
 
   const updateCase = async (id: string, data: Partial<RMACase>) => {
     const response = await rmaService.updateRMACase(id, data);
-    if (response.success) {
-      await loadCases();
+    if (response.success && response.data?.case) {
+      setCases((prev) => prev.map((item) => (item.id === id ? (response.data!.case as RMACase) : item)));
     }
     return response;
   };
 
   const updateTracking = async (id: string, data: any) => {
     const response = await rmaService.updateRMATracking(id, data);
-    if (response.success) {
-      await loadCases();
+    if (response.success && response.data?.case) {
+      setCases((prev) => prev.map((item) => (item.id === id ? (response.data!.case as RMACase) : item)));
     }
     return response;
   };
@@ -352,7 +356,7 @@ export function useNotificationsAPI() {
   const [loading, setLoading] = useState(false);
 
   const loadNotifications = useCallback(async () => {
-    const response = await notificationService.getNotifications();
+    const response = await notificationService.getNotifications({ page: 1, limit: 50 });
     if (response.success && response.data) {
       setNotifications(response.data.notifications || []);
     }
@@ -373,8 +377,7 @@ export function useNotificationsAPI() {
   const markAsRead = async (id: string) => {
     const response = await notificationService.markAsRead(id);
     if (response.success) {
-      await loadNotifications();
-      await loadUnreadCount();
+      await Promise.all([loadNotifications(), loadUnreadCount()]);
     }
     return response;
   };
@@ -382,8 +385,7 @@ export function useNotificationsAPI() {
   const markAllAsRead = async () => {
     const response = await notificationService.markAllAsRead();
     if (response.success) {
-      await loadNotifications();
-      await loadUnreadCount();
+      await Promise.all([loadNotifications(), loadUnreadCount()]);
     }
     return response;
   };
@@ -391,8 +393,7 @@ export function useNotificationsAPI() {
   const deleteNotification = async (id: string) => {
     const response = await notificationService.deleteNotification(id);
     if (response.success) {
-      await loadNotifications();
-      await loadUnreadCount();
+      await Promise.all([loadNotifications(), loadUnreadCount()]);
     }
     return response;
   };

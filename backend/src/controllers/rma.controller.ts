@@ -15,47 +15,110 @@ import { sendAssignmentEmail, sendRmaClientEmail } from '../utils/email.util';
 // Get all RMA cases with filters
 export async function getAllRmaCases(req: AuthRequest, res: Response) {
   try {
-    const { status, type, assignedTo, search, page = '1', limit = '50' } = req.query;
+    const {
+      status,
+      type,
+      assignedTo,
+      search,
+      page = '1',
+      limit = '50',
+      includeAudit = 'false',
+      includeStats = 'true',
+      dateFrom,
+      dateTo,
+      year,
+      dnr,
+      ageDays,
+    } = req.query;
 
-    const where: any = {};
+    const baseWhere: any = {};
 
     // Staff: restrict to PVR sites only
-    Object.assign(where, getStaffPvrSiteFilter(req.user?.role));
+    Object.assign(baseWhere, getStaffPvrSiteFilter(req.user?.role));
 
-    if (status) where.status = status;
-    if (type) where.rmaType = type;
-    if (assignedTo) where.assignedTo = assignedTo;
+    if (type) baseWhere.rmaType = type;
+    if (assignedTo) baseWhere.assignedTo = assignedTo;
+
+    const shouldFilterDnr = String(dnr).toLowerCase() === 'true';
+    if (shouldFilterDnr) {
+      baseWhere.isDefectivePartDNR = true;
+    }
+
+    const parsedAgeDays = Number(ageDays);
+    if (Number.isFinite(parsedAgeDays) && parsedAgeDays > 0) {
+      const threshold = new Date();
+      threshold.setDate(threshold.getDate() - parsedAgeDays);
+      // Age filter applies to in-transit items only.
+      baseWhere.status = 'faulty_in_transit_to_cds';
+      baseWhere.shippedDate = { lte: threshold };
+    }
+
+    const hasDateRange = Boolean(dateFrom || dateTo);
+    if (hasDateRange) {
+      const dateWhere: any = {};
+      if (dateFrom) {
+        const from = new Date(String(dateFrom));
+        from.setHours(0, 0, 0, 0);
+        dateWhere.gte = from;
+      }
+      if (dateTo) {
+        const to = new Date(String(dateTo));
+        to.setHours(23, 59, 59, 999);
+        dateWhere.lte = to;
+      }
+      baseWhere.rmaRaisedDate = dateWhere;
+    } else if (year && String(year) !== 'all') {
+      const parsedYear = Number(year);
+      if (Number.isFinite(parsedYear)) {
+        const start = new Date(parsedYear, 0, 1);
+        const end = new Date(parsedYear, 11, 31, 23, 59, 59, 999);
+        baseWhere.rmaRaisedDate = { gte: start, lte: end };
+      }
+    }
 
     if (search) {
-      where.OR = [
+      baseWhere.OR = [
         { rmaNumber: { contains: search as string, mode: 'insensitive' } },
         { callLogNumber: { contains: search as string, mode: 'insensitive' } },
         { rmaOrderNumber: { contains: search as string, mode: 'insensitive' } },
         { productName: { contains: search as string, mode: 'insensitive' } },
+        { productPartNumber: { contains: search as string, mode: 'insensitive' } },
         { serialNumber: { contains: search as string, mode: 'insensitive' } },
+        { defectivePartName: { contains: search as string, mode: 'insensitive' } },
+        { defectivePartNumber: { contains: search as string, mode: 'insensitive' } },
+        { defectivePartSerial: { contains: search as string, mode: 'insensitive' } },
+        { replacedPartNumber: { contains: search as string, mode: 'insensitive' } },
+        { replacedPartSerial: { contains: search as string, mode: 'insensitive' } },
         { symptoms: { contains: search as string, mode: 'insensitive' } },
         { site: { siteName: { contains: search as string, mode: 'insensitive' } } },
       ];
     }
 
-    // Enforce maximum limit to prevent connection pool exhaustion
-    const maxLimit = 100;
-    const take = Math.min(Number(limit), maxLimit);
-    const skip = (Number(page) - 1) * take;
+    const where: any = { ...baseWhere };
+    if (status) {
+      if (String(status) === 'pending') {
+        where.status = { in: ['rma_raised_yet_to_deliver', 'faulty_in_transit_to_cds'] };
+      } else {
+        where.status = status;
+      }
+    }
 
-    const [cases, total] = await Promise.all([
+    const shouldIncludeAudit = String(includeAudit).toLowerCase() === 'true';
+    const shouldIncludeStats = String(includeStats).toLowerCase() === 'true';
+    const maxLimit = 100;
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const take = Math.max(1, Math.min(Number(limit) || 50, maxLimit));
+    const skip = (currentPage - 1) * take;
+
+    const [cases, total, statusBreakdown, dnrCount, statsTotal] = await Promise.all([
       prisma.rmaCase.findMany({
         where,
         include: {
-          site: true,
+          site: {
+            select: { id: true, siteName: true, siteType: true },
+          },
           audi: {
-            include: {
-              projector: {
-                include: {
-                  projectorModel: true,
-                },
-              },
-            },
+            select: { id: true, audiNo: true },
           },
           creator: {
             select: { id: true, name: true, email: true, role: true },
@@ -69,9 +132,40 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
         take,
       }),
       prisma.rmaCase.count({ where }),
+      shouldIncludeStats
+        ? prisma.rmaCase.groupBy({
+            by: ['status'],
+            _count: { _all: true },
+            where: baseWhere,
+          })
+        : Promise.resolve([] as any[]),
+      shouldIncludeStats ? prisma.rmaCase.count({ where: { ...baseWhere, isDefectivePartDNR: true } }) : Promise.resolve(0),
+      shouldIncludeStats ? prisma.rmaCase.count({ where: baseWhere }) : Promise.resolve(0),
     ]);
 
-    // Manually fetch audit logs for all cases
+    const statusCounts = (statusBreakdown || []).reduce((acc: Record<string, number>, item: any) => {
+      acc[item.status] = item._count?._all || 0;
+      return acc;
+    }, {});
+
+    const stats = shouldIncludeStats
+      ? {
+          total: statsTotal,
+          open: statusCounts.open || 0,
+          rmaRaised: statusCounts.rma_raised_yet_to_deliver || 0,
+          inTransit: statusCounts.faulty_in_transit_to_cds || 0,
+          pending: (statusCounts.rma_raised_yet_to_deliver || 0) + (statusCounts.faulty_in_transit_to_cds || 0),
+          closed: statusCounts.closed || 0,
+          cancelled: statusCounts.cancelled || 0,
+          dnr: dnrCount || 0,
+        }
+      : undefined;
+
+    if (!shouldIncludeAudit || cases.length === 0) {
+      return sendSuccess(res, { cases, total, page: currentPage, limit: take, stats });
+    }
+
+    // Optional audit logs for list endpoint
     const caseIds = cases.map(c => c.id);
     const auditLogs = await prisma.auditLog.findMany({
       where: {
@@ -86,10 +180,20 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
       orderBy: { performedAt: 'desc' },
     });
 
-    // Map audit logs to cases
+    // O(n) grouping to avoid repeated list filtering per case
+    const auditLogByCaseId = new Map<string, typeof auditLogs>();
+    for (const log of auditLogs) {
+      const existing = auditLogByCaseId.get(log.caseId);
+      if (existing) {
+        existing.push(log);
+      } else {
+        auditLogByCaseId.set(log.caseId, [log]);
+      }
+    }
+
     const casesWithAuditLogs = cases.map(c => ({
       ...c,
-      auditLog: auditLogs.filter(log => log.caseId === c.id).map(log => ({
+      auditLog: (auditLogByCaseId.get(c.id) || []).map(log => ({
         id: log.id,
         action: log.action,
         details: log.description || '',
@@ -98,7 +202,7 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
       })),
     }));
 
-    return sendSuccess(res, { cases: casesWithAuditLogs, total, page: Number(page), limit: Number(limit) });
+    return sendSuccess(res, { cases: casesWithAuditLogs, total, page: currentPage, limit: take, stats });
   } catch (error: any) {
     console.error('Get RMA cases error:', error);
     return sendError(res, 'Failed to fetch RMA cases', 500, error.message);
@@ -288,7 +392,7 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
     // Send notification + email if assigned
     if (assignedTo && rmaCase.assignee?.email) {
       const notificationStartedAt = Date.now();
-      await prisma.notification.create({
+      void prisma.notification.create({
         data: {
           userId: assignedTo,
           title: 'New RMA Case Assigned',
@@ -297,7 +401,7 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
           caseId: rmaCase.id,
           caseType: 'RMA',
         },
-      });
+      }).catch((err) => console.error('RMA assignment notification error:', err));
       timings.notificationMs = Date.now() - notificationStartedAt;
 
       // Fire-and-forget email so SMTP latency never blocks RMA creation response.
@@ -525,7 +629,7 @@ export async function updateRmaCase(req: AuthRequest, res: Response) {
 
     // Send notification + email if assignedTo changed
     if (cleanUpdateData.assignedTo && cleanUpdateData.assignedTo !== currentCase.assignedTo && rmaCase.assignee?.email) {
-      await prisma.notification.create({
+      void prisma.notification.create({
         data: {
           userId: cleanUpdateData.assignedTo,
           title: 'RMA Case Assigned',
@@ -534,21 +638,21 @@ export async function updateRmaCase(req: AuthRequest, res: Response) {
           caseId: rmaCase.id,
           caseType: 'RMA',
         },
-      });
+      }).catch((err) => console.error('RMA reassignment notification error:', err));
 
-      try {
-        await sendAssignmentEmail({
-          to: rmaCase.assignee.email,
-          engineerName: rmaCase.assignee.name,
-          caseType: 'RMA',
-          caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
-          createdBy: rmaCase.creator?.email,
+      void sendAssignmentEmail({
+        to: rmaCase.assignee.email,
+        engineerName: rmaCase.assignee.name,
+        caseType: 'RMA',
+        caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
+        createdBy: rmaCase.creator?.email,
+      })
+        .then(() => {
+          console.log(`Reassignment email sent successfully to ${rmaCase.assignee?.email} for RMA ${rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A'}`);
+        })
+        .catch((err: any) => {
+          console.error('RMA reassignment email error:', err);
         });
-        console.log(`Reassignment email sent successfully to ${rmaCase.assignee.email} for RMA ${rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A'}`);
-      } catch (err: any) {
-        console.error('RMA reassignment email error:', err);
-        // Don't fail the request if email fails, but log it
-      }
     } else if (cleanUpdateData.assignedTo && cleanUpdateData.assignedTo !== currentCase.assignedTo && !rmaCase.assignee?.email) {
       console.warn(`RMA reassignment email not sent: assignee email not found for RMA ${rmaCase.id}`);
     }
@@ -615,7 +719,7 @@ export async function assignRmaCase(req: AuthRequest, res: Response) {
     });
 
     // Send notification + email to the assigned user
-    await prisma.notification.create({
+    void prisma.notification.create({
       data: {
         userId: userId,
         title: 'RMA Case Assigned',
@@ -624,23 +728,23 @@ export async function assignRmaCase(req: AuthRequest, res: Response) {
         caseId: rmaCase.id,
         caseType: 'RMA',
       },
-    });
+    }).catch((err) => console.error('RMA assign notification error:', err));
 
     // Send assignment email to engineer
     if (rmaCase.assignee?.email) {
-      try {
-        await sendAssignmentEmail({
-          to: rmaCase.assignee.email,
-          engineerName: rmaCase.assignee.name,
-          caseType: 'RMA',
-          caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
-          createdBy: rmaCase.creator?.email,
+      void sendAssignmentEmail({
+        to: rmaCase.assignee.email,
+        engineerName: rmaCase.assignee.name,
+        caseType: 'RMA',
+        caseNumber: rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A',
+        createdBy: rmaCase.creator?.email,
+      })
+        .then(() => {
+          console.log(`Assignment email sent successfully to ${rmaCase.assignee?.email} for RMA ${rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A'}`);
+        })
+        .catch((err: any) => {
+          console.error('RMA assign endpoint email error:', err);
         });
-        console.log(`Assignment email sent successfully to ${rmaCase.assignee.email} for RMA ${rmaCase.rmaNumber || rmaCase.callLogNumber || 'N/A'}`);
-      } catch (err: any) {
-        console.error('RMA assign endpoint email error:', err);
-        // Don't fail the request if email fails, but log it
-      }
     } else {
       console.warn(`RMA assignment email not sent: assignee email not found for RMA ${rmaCase.id}`);
     }
@@ -680,7 +784,7 @@ export async function updateRmaStatus(req: AuthRequest, res: Response) {
 
     // Send notification to assignee if exists
     if (rmaCase.assignedTo) {
-      await prisma.notification.create({
+      void prisma.notification.create({
         data: {
           userId: rmaCase.assignedTo,
           title: 'RMA Case Status Updated',
@@ -689,7 +793,7 @@ export async function updateRmaStatus(req: AuthRequest, res: Response) {
           caseId: rmaCase.id,
           caseType: 'RMA',
         },
-      });
+      }).catch((err) => console.error('RMA status notification error:', err));
     }
 
     return sendSuccess(res, { case: rmaCase }, 'Status updated successfully');

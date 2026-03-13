@@ -8,13 +8,23 @@ const getApiBaseUrl = () => {
     return viteApiUrl;
   }
   
-  // Auto-detect for production (same origin)
+  // Auto-detect local vs deployed environments
   if (typeof window !== 'undefined') {
-    const origin = window.location.origin;
-    // If deployed, use same origin for API
-    if (origin.includes('vercel.app') || origin.includes('localhost') === false) {
+    const { origin, hostname } = window.location;
+    const localHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
+
+    // Local dev: frontend on localhost/127.0.0.1 should call local backend.
+    if (localHosts.has(hostname)) {
+      return 'http://localhost:5002/api';
+    }
+
+    // Deployed environments use same-origin API route.
+    if (origin.includes('vercel.app')) {
       return `${origin}/api`;
     }
+
+    // Any non-local hostname should also use same-origin API route.
+    return `${origin}/api`;
   }
   
   // Default to local development (backend runs on 5002)
@@ -72,10 +82,6 @@ export async function apiRequest<T = any>(
     // Handle 401 (Unauthorized) - token expired
     if (response.status === 401) {
       removeAuthToken();
-      // Redirect to login or show error
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
       return {
         success: false,
         message: 'Session expired. Please login again.',
@@ -101,20 +107,24 @@ export async function apiRequest<T = any>(
       };
     }
 
-    const data = await response.json();
+    const contentType = response.headers.get('content-type') || '';
+    const rawBody = await response.text();
+    const data = contentType.includes('application/json') && rawBody
+      ? JSON.parse(rawBody)
+      : {};
 
     if (!response.ok) {
       return {
         success: false,
-        message: data.message || 'Request failed',
-        error: data.error,
+        message: (data as any).message || `Request failed (${response.status})`,
+        error: (data as any).error,
       };
     }
 
     return {
       success: true,
-      data: data.data || data,
-      message: data.message,
+      data: (data as any).data || data,
+      message: (data as any).message,
     };
   } catch (error: any) {
     clearTimeout(timeoutId);

@@ -41,6 +41,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
     cancelled: number;
     dnr: number;
   } | null>(null);
+  const [serverYears, setServerYears] = useState<number[]>([]);
   const pageSize = 50;
   
   // Export dialog state
@@ -121,6 +122,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
         setTotalCases(response.data.total || 0);
         setCurrentPage(response.data.page || pageToLoad);
         setServerStats(response.data.stats || null);
+        setServerYears(Array.isArray((response.data as any).years) ? (response.data as any).years : []);
         setIsInitialLoad(false);
       }
     } catch (error) {
@@ -247,15 +249,16 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
     }
   };
 
-  // Available years (from ALL cases)
-  const availableYears: number[] = Array.from(
-    new Set(
-      allRMACases
-        .map(r => getYearFromDate(r.rmaRaisedDate))
-        .filter((y): y is number => y !== null)
-    )
-  );
-  availableYears.sort((a, b) => b - a);
+  // Available years:
+  // - prefer server-provided distinct years across the filtered dataset
+  // - fallback to current page (better than empty)
+  const pageYears = allRMACases
+    .map((r) => getYearFromDate(r.rmaRaisedDate))
+    .filter((y): y is number => y !== null);
+
+  const uniquePageYears = Array.from(new Set<number>(pageYears)).sort((a, b) => b - a);
+
+  const availableYears: number[] = serverYears && serverYears.length > 0 ? serverYears : uniquePageYears;
 
   // Check if any filters are active (search, status, type, date range, year, age, dnr)
   const hasActiveFilters = debouncedSearchTerm || 

@@ -53,6 +53,9 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
       baseWhere.shippedDate = { lte: threshold };
     }
 
+    // Capture filters that should affect year options (but NOT the year/date filter itself).
+    const yearsWhere: any = { ...baseWhere };
+
     const hasDateRange = Boolean(dateFrom || dateTo);
     if (hasDateRange) {
       const dateWhere: any = {};
@@ -110,7 +113,7 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
     const take = Math.max(1, Math.min(Number(limit) || 50, maxLimit));
     const skip = (currentPage - 1) * take;
 
-    const [cases, total, statusBreakdown, dnrCount, statsTotal] = await Promise.all([
+    const [cases, total, statusBreakdown, dnrCount, statsTotal, distinctRaisedDates] = await Promise.all([
       prisma.rmaCase.findMany({
         where,
         include: {
@@ -141,7 +144,24 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
         : Promise.resolve([] as any[]),
       shouldIncludeStats ? prisma.rmaCase.count({ where: { ...baseWhere, isDefectivePartDNR: true } }) : Promise.resolve(0),
       shouldIncludeStats ? prisma.rmaCase.count({ where: baseWhere }) : Promise.resolve(0),
+      shouldIncludeStats
+        ? prisma.rmaCase.findMany({
+            where: yearsWhere,
+            select: { rmaRaisedDate: true },
+            distinct: ['rmaRaisedDate'],
+          })
+        : Promise.resolve([] as Array<{ rmaRaisedDate: Date | null }>),
     ]);
+
+    const years = shouldIncludeStats
+      ? Array.from(
+          new Set(
+            (distinctRaisedDates || [])
+              .map((r) => (r.rmaRaisedDate ? new Date(r.rmaRaisedDate).getFullYear() : null))
+              .filter((y): y is number => typeof y === 'number' && Number.isFinite(y))
+          )
+        ).sort((a, b) => b - a)
+      : undefined;
 
     const statusCounts = (statusBreakdown || []).reduce((acc: Record<string, number>, item: any) => {
       acc[item.status] = item._count?._all || 0;
@@ -162,7 +182,7 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
       : undefined;
 
     if (!shouldIncludeAudit || cases.length === 0) {
-      return sendSuccess(res, { cases, total, page: currentPage, limit: take, stats });
+      return sendSuccess(res, { cases, total, page: currentPage, limit: take, stats, years });
     }
 
     // Optional audit logs for list endpoint
@@ -202,7 +222,7 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
       })),
     }));
 
-    return sendSuccess(res, { cases: casesWithAuditLogs, total, page: currentPage, limit: take, stats });
+    return sendSuccess(res, { cases: casesWithAuditLogs, total, page: currentPage, limit: take, stats, years });
   } catch (error: any) {
     console.error('Get RMA cases error:', error);
     return sendError(res, 'Failed to fetch RMA cases', 500, error.message);

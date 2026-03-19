@@ -79,6 +79,7 @@ export const rmaService = {
       total: number;
       page: number;
       limit: number;
+      years?: number[];
       stats?: {
         total: number;
         open: number;

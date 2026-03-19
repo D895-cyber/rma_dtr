@@ -23,7 +23,7 @@ function getStaffPvrSiteFilter(role: string | undefined) {
 // Get all DTR cases with filters
 export async function getAllDtrCases(req: AuthRequest, res: Response) {
   try {
-    const { status, severity, assignedTo, search, page, limit } = req.query;
+    const { status, severity, assignedTo, search, page = '1', limit = '50', includeAudit = 'false' } = req.query;
 
     const where: any = {};
 
@@ -44,31 +44,22 @@ export async function getAllDtrCases(req: AuthRequest, res: Response) {
       ];
     }
 
-    // If no pagination parameters are provided, fetch all cases
-    // Otherwise, apply pagination with a reasonable maximum limit
-    let skip: number | undefined = undefined;
-    let take: number | undefined = undefined;
-    
-    if (page && limit) {
-      const maxLimit = 10000; // High limit to fetch all cases
-      const parsedLimit = Number(limit);
-      take = parsedLimit > 0 ? Math.min(parsedLimit, maxLimit) : maxLimit;
-      skip = (Number(page) - 1) * take;
-    }
+    const shouldIncludeAudit = String(includeAudit).toLowerCase() === 'true';
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const maxLimit = 100;
+    const parsedLimit = Number(limit) || 50;
+    const take = Math.max(1, Math.min(parsedLimit, maxLimit));
+    const skip = (currentPage - 1) * take;
 
     const [cases, total] = await Promise.all([
       prisma.dtrCase.findMany({
         where,
         include: {
-          site: true,
+          site: {
+            select: { id: true, siteName: true, siteType: true },
+          },
           audi: {
-            include: {
-              projector: {
-                include: {
-                  projectorModel: true,
-                },
-              },
-            },
+            select: { id: true, audiNo: true },
           },
           creator: {
             select: { id: true, name: true, email: true, role: true },
@@ -81,13 +72,22 @@ export async function getAllDtrCases(req: AuthRequest, res: Response) {
           },
         },
         orderBy: { createdAt: 'desc' },
-        ...(skip !== undefined && { skip }),
-        ...(take !== undefined && { take }),
+        skip,
+        take,
       }),
       prisma.dtrCase.count({ where }),
     ]);
 
-    // Manually fetch audit logs for all cases
+    if (!shouldIncludeAudit || cases.length === 0) {
+      return sendSuccess(res, {
+        cases,
+        total,
+        page: currentPage,
+        limit: take,
+      });
+    }
+
+    // Optional audit logs for list endpoint
     const caseIds = cases.map(c => c.id);
     const auditLogs = await prisma.auditLog.findMany({
       where: {
@@ -102,10 +102,20 @@ export async function getAllDtrCases(req: AuthRequest, res: Response) {
       orderBy: { performedAt: 'desc' },
     });
 
-    // Map audit logs to cases
+    // O(n) grouping to avoid repeated list filtering per case
+    const auditLogByCaseId = new Map<string, typeof auditLogs>();
+    for (const log of auditLogs) {
+      const existing = auditLogByCaseId.get(log.caseId);
+      if (existing) {
+        existing.push(log);
+      } else {
+        auditLogByCaseId.set(log.caseId, [log]);
+      }
+    }
+
     const casesWithAuditLogs = cases.map(c => ({
       ...c,
-      auditLog: auditLogs.filter(log => log.caseId === c.id).map(log => ({
+      auditLog: (auditLogByCaseId.get(c.id) || []).map(log => ({
         id: log.id,
         action: log.action,
         details: log.description || '',
@@ -117,8 +127,8 @@ export async function getAllDtrCases(req: AuthRequest, res: Response) {
     return sendSuccess(res, { 
       cases: casesWithAuditLogs, 
       total, 
-      page: page ? Number(page) : 1, 
-      limit: limit ? Number(limit) : total 
+      page: currentPage,
+      limit: take,
     });
   } catch (error: any) {
     console.error('Get DTR cases error:', error);
@@ -307,7 +317,7 @@ export async function createDtrCase(req: AuthRequest, res: Response) {
       
       // In-app notification
       if (prefs.inAppCaseAssigned) {
-        await prisma.notification.create({
+        void prisma.notification.create({
           data: {
             userId: assignedToUserId,
             title: 'New DTR Case Assigned',
@@ -316,23 +326,24 @@ export async function createDtrCase(req: AuthRequest, res: Response) {
             caseId: dtrCase.id,
             caseType: 'DTR',
           },
-        });
+        }).catch((err) => console.error('DTR assignment notification error:', err));
       }
 
       // Email notification
       if (prefs.emailCaseAssigned) {
-        try {
-          await sendAssignmentEmail({
-            to: dtrCase.assignee.email,
-            engineerName: dtrCase.assignee.name,
-            caseType: 'DTR',
-            caseNumber: dtrCase.caseNumber,
-            createdBy: dtrCase.creator?.email,
+        void sendAssignmentEmail({
+          to: dtrCase.assignee.email,
+          engineerName: dtrCase.assignee.name,
+          caseType: 'DTR',
+          caseNumber: dtrCase.caseNumber,
+          createdBy: dtrCase.creator?.email,
+        })
+          .then(() => {
+            console.log(`Assignment email sent successfully to ${dtrCase.assignee?.email} for DTR ${dtrCase.caseNumber}`);
+          })
+          .catch((err) => {
+            console.error('DTR assignment email error:', err);
           });
-          console.log(`Assignment email sent successfully to ${dtrCase.assignee.email} for DTR ${dtrCase.caseNumber}`);
-        } catch (err) {
-          console.error('DTR assignment email error:', err);
-        }
       }
     }
 
@@ -450,7 +461,7 @@ export async function updateDtrCase(req: AuthRequest, res: Response) {
       const prefs = await getNotificationPreferencesForUser(updateData.assignedTo);
       
       if (prefs.inAppCaseAssigned) {
-        await prisma.notification.create({
+        void prisma.notification.create({
           data: {
             userId: updateData.assignedTo,
             title: 'DTR Case Assigned',
@@ -459,22 +470,23 @@ export async function updateDtrCase(req: AuthRequest, res: Response) {
             caseId: dtrCase.id,
             caseType: 'DTR',
           },
-        });
+        }).catch((err) => console.error('DTR reassignment notification error:', err));
       }
 
       if (prefs.emailCaseAssigned) {
-        try {
-          await sendAssignmentEmail({
-            to: dtrCase.assignee.email,
-            engineerName: dtrCase.assignee.name,
-            caseType: 'DTR',
-            caseNumber: dtrCase.caseNumber,
-            createdBy: dtrCase.creator?.email,
+        void sendAssignmentEmail({
+          to: dtrCase.assignee.email,
+          engineerName: dtrCase.assignee.name,
+          caseType: 'DTR',
+          caseNumber: dtrCase.caseNumber,
+          createdBy: dtrCase.creator?.email,
+        })
+          .then(() => {
+            console.log(`Assignment email sent successfully to ${dtrCase.assignee?.email} for DTR ${dtrCase.caseNumber}`);
+          })
+          .catch((err) => {
+            console.error('DTR reassignment email error:', err);
           });
-          console.log(`Assignment email sent successfully to ${dtrCase.assignee.email} for DTR ${dtrCase.caseNumber}`);
-        } catch (err) {
-          console.error('DTR reassignment email error:', err);
-        }
       }
     }
 
@@ -484,7 +496,7 @@ export async function updateDtrCase(req: AuthRequest, res: Response) {
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       
       if (prefs.inAppStatusChanged) {
-        await prisma.notification.create({
+        void prisma.notification.create({
           data: {
             userId: dtrCase.assignee.id,
             title: 'DTR Case Status Changed',
@@ -493,7 +505,7 @@ export async function updateDtrCase(req: AuthRequest, res: Response) {
             caseId: dtrCase.id,
             caseType: 'DTR',
           },
-        });
+        }).catch((err) => console.error('DTR status notification error:', err));
       }
 
       if (prefs.emailStatusChanged && dtrCase.assignee.email) {
@@ -581,7 +593,7 @@ export async function assignDtrCase(req: AuthRequest, res: Response) {
     });
 
     // Send notification + email to the assigned user
-    await prisma.notification.create({
+    void prisma.notification.create({
       data: {
         userId: userId,
         title: 'DTR Case Assigned',
@@ -590,21 +602,22 @@ export async function assignDtrCase(req: AuthRequest, res: Response) {
         caseId: dtrCase.id,
         caseType: 'DTR',
       },
-    });
+    }).catch((err) => console.error('DTR assign notification error:', err));
 
     if (dtrCase.assignee?.email) {
-      try {
-        await sendAssignmentEmail({
-          to: dtrCase.assignee.email,
-          engineerName: dtrCase.assignee.name,
-          caseType: 'DTR',
-          caseNumber: dtrCase.caseNumber,
-          createdBy: dtrCase.creator?.email,
+      void sendAssignmentEmail({
+        to: dtrCase.assignee.email,
+        engineerName: dtrCase.assignee.name,
+        caseType: 'DTR',
+        caseNumber: dtrCase.caseNumber,
+        createdBy: dtrCase.creator?.email,
+      })
+        .then(() => {
+          console.log(`Assignment email sent successfully to ${dtrCase.assignee?.email} for DTR ${dtrCase.caseNumber}`);
+        })
+        .catch((err) => {
+          console.error('DTR assign endpoint email error:', err);
         });
-        console.log(`Assignment email sent successfully to ${dtrCase.assignee.email} for DTR ${dtrCase.caseNumber}`);
-      } catch (err) {
-        console.error('DTR assign endpoint email error:', err);
-      }
     }
 
     return sendSuccess(res, { case: dtrCase }, 'DTR case assigned successfully');
@@ -643,7 +656,7 @@ export async function updateDtrStatus(req: AuthRequest, res: Response) {
 
     // Send notification to assignee if exists
     if (dtrCase.assignedTo) {
-      await prisma.notification.create({
+      void prisma.notification.create({
         data: {
           userId: dtrCase.assignedTo,
           title: 'DTR Case Status Updated',
@@ -652,7 +665,7 @@ export async function updateDtrStatus(req: AuthRequest, res: Response) {
           caseId: dtrCase.id,
           caseType: 'DTR',
         },
-      });
+      }).catch((err) => console.error('DTR status update notification error:', err));
     }
 
     return sendSuccess(res, { case: dtrCase }, 'Status updated successfully');

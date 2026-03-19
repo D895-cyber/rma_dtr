@@ -195,6 +195,8 @@ model DtrCase {
   @@index([caseSeverity])
   @@index([assignedTo])
   @@index([createdAt])
+  @@index([callStatus, createdAt])
+  @@index([assignedTo, createdAt])
   @@index([caseNumber])
   @@index([siteId, audiId]) // Composite index for common queries
   @@map("dtr_cases")
@@ -221,7 +223,7 @@ enum CaseSeverity {
 model RmaCase {
   id                      String     @id @default(uuid())
   rmaType                 RmaType    @map("rma_type")
-  callLogNumber           String?    @unique @map("call_log_number")  // Numeric value, NOT linked to DTR (unique)
+  callLogNumber           String?    @map("call_log_number")  // Numeric value, NOT linked to DTR (can repeat)
   rmaNumber               String?    @map("rma_number")  // PO Number (optional)
   rmaOrderNumber          String?    @map("rma_order_number")  // Order Number (optional)
   rmaRaisedDate           DateTime   @map("rma_raised_date") @db.Date
@@ -262,6 +264,10 @@ model RmaCase {
   @@index([status])
   @@index([assignedTo])
   @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([assignedTo, createdAt])
+  @@index([rmaType, createdAt])
+  @@index([status, shippedDate])
   @@index([rmaRaisedDate])
   @@index([rmaNumber])
   @@index([productPartNumber])
@@ -330,6 +336,8 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, read])
+  @@index([userId, createdAt])
+  @@index([userId, read, createdAt])
   @@index([createdAt])
   @@map("notifications")
 }

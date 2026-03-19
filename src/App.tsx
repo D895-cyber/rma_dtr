@@ -66,7 +66,7 @@ export default function App() {
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [notificationPrefsOpen, setNotificationPrefsOpen] = useState(false);
   const [openCaseFromSearch, setOpenCaseFromSearch] = useState<{ type: 'DTR' | 'RMA'; id: string } | null>(null);
-  const { can } = usePermissions(); // Moved here - must be called unconditionally
+  const { can, role } = usePermissions(); // Moved here - must be called unconditionally
   const { isFieldMode, setFieldMode } = useFieldMode();
 
   useKeyboardShortcuts({
@@ -129,6 +129,7 @@ export default function App() {
 
   // Use real user from backend
   const currentUser = user;
+  const isStaff = (role || currentUser.role)?.toString().toLowerCase() === 'staff';
 
   // Role-based navigation items
   const allNavItems = [
@@ -145,7 +146,9 @@ export default function App() {
   ];
 
   // Filter nav items based on user permissions
-  const navItems = allNavItems.filter(item => can(item.permission));
+  const navItems = allNavItems.filter(
+    (item) => (!isStaff || item.id !== 'dtr') && can(item.permission)
+  );
 
   const adminItems = [
     { id: 'users', label: 'Users', icon: Users, permission: 'users:view' as const },
@@ -299,7 +302,7 @@ export default function App() {
             onCreateRMA={() => handleTabChange('rma')}
           />
         )}
-        {activeTab === 'dtr' && (
+        {activeTab === 'dtr' && !isStaff && (
           <DTRList
             currentUser={currentUser}
             openCaseId={openCaseFromSearch?.type === 'DTR' ? openCaseFromSearch.id : null}
@@ -328,6 +331,7 @@ export default function App() {
         onClose={() => setSearchOpen(false)}
         onSelect={(type, id) => {
           if (type === 'DTR') {
+            if (isStaff) return; // Staff should not see or open DTR cases
             setActiveTab('dtr');
             setOpenCaseFromSearch({ type: 'DTR', id });
             setSearchOpen(false);

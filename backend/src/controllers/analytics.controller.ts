@@ -10,12 +10,24 @@ function getStaffPvrWhere(role: string | undefined) {
   return {};
 }
 
+const DASHBOARD_COMPACT_CACHE_TTL_MS = 15_000;
+const dashboardCompactCache = new Map<string, { expiresAt: number; payload: any }>();
+
 // Get dashboard statistics
 export async function getDashboardStats(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.userId;
     const userRole = req.user!.role;
     const pvrWhere = getStaffPvrWhere(userRole);
+    const compact = String(req.query.compact || '').toLowerCase() === 'true';
+    const cacheKey = `${userRole}:${userId}:compact`;
+
+    if (compact) {
+      const cached = dashboardCompactCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return sendSuccess(res, cached.payload);
+      }
+    }
     const canIncludeDtr = userRole !== 'staff';
 
     // DTR Statistics (not shown to staff)
@@ -78,6 +90,11 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
       }),
     ]);
 
+    // In compact mode, avoid expensive include payloads.
+    const [recentDtrCasesList, recentRmaCasesList] = compact
+      ? [[], []]
+      : await Promise.all([
+          prisma.dtrCase.findMany({
     // Get recent case objects (last 5) for dashboard display
     const [recentDtrCasesList, recentRmaCasesList] = await Promise.all([
       canIncludeDtr
@@ -111,8 +128,29 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
                   email: true,
                   role: true,
                 },
+              },
+              creator: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+              assignee: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
                 },
             },
+          }),
+          prisma.rmaCase.findMany({
+            where: pvrWhere,
+            take: 5,
+            orderBy: { createdAt: 'desc' },
           })
         : Promise.resolve([]),
       prisma.rmaCase.findMany({
@@ -123,73 +161,89 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
           site: true,
           audi: {
             include: {
-              projector: {
+              site: true,
+              audi: {
                 include: {
-                  projectorModel: true,
+                  projector: {
+                    include: {
+                      projectorModel: true,
+                    },
+                  },
+                },
+              },
+              creator: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+              assignee: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
                 },
               },
             },
-          },
-          creator: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true,
-            },
-          },
-          assignee: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true,
-            },
-          },
-        },
-      }),
-    ]);
+          }),
+        ]);
 
     // Overdue RMA: status faulty_in_transit_to_cds and shippedDate older than 30 days
     const overdueThreshold = new Date();
     overdueThreshold.setDate(overdueThreshold.getDate() - 30);
 
-    const [overdueRmaCount, overdueRmaCasesList] = await Promise.all([
-      prisma.rmaCase.count({
-        where: {
-          ...pvrWhere,
-          status: 'faulty_in_transit_to_cds',
-          shippedDate: {
-            lt: overdueThreshold,
-          },
-        },
-      }),
-      prisma.rmaCase.findMany({
-        where: {
-          ...pvrWhere,
-          status: 'faulty_in_transit_to_cds',
-          shippedDate: {
-            lt: overdueThreshold,
-          },
-        },
-        orderBy: { shippedDate: 'asc' },
-        take: 5,
-        include: {
-          site: true,
-          audi: {
+    const [overdueRmaCount, overdueRmaCasesList] = compact
+      ? await Promise.all([
+          prisma.rmaCase.count({
+            where: {
+              ...pvrWhere,
+              status: 'faulty_in_transit_to_cds',
+              shippedDate: {
+                lt: overdueThreshold,
+              },
+            },
+          }),
+          Promise.resolve([]),
+        ])
+      : await Promise.all([
+          prisma.rmaCase.count({
+            where: {
+              ...pvrWhere,
+              status: 'faulty_in_transit_to_cds',
+              shippedDate: {
+                lt: overdueThreshold,
+              },
+            },
+          }),
+          prisma.rmaCase.findMany({
+            where: {
+              ...pvrWhere,
+              status: 'faulty_in_transit_to_cds',
+              shippedDate: {
+                lt: overdueThreshold,
+              },
+            },
+            orderBy: { shippedDate: 'asc' },
+            take: 5,
             include: {
-              projector: {
+              site: true,
+              audi: {
                 include: {
-                  projectorModel: true,
+                  projector: {
+                    include: {
+                      projectorModel: true,
+                    },
+                  },
                 },
               },
             },
-          },
-        },
-      }),
-    ]);
+          }),
+        ]);
 
-    return sendSuccess(res, {
+    const payload = {
       dtr: {
         total: totalDtrCases,
         open: openDtrCases,
@@ -216,7 +270,16 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
         acc[item.caseSeverity] = item._count;
         return acc;
       }, {} as any),
-    });
+    };
+
+    if (compact) {
+      dashboardCompactCache.set(cacheKey, {
+        payload,
+        expiresAt: Date.now() + DASHBOARD_COMPACT_CACHE_TTL_MS,
+      });
+    }
+
+    return sendSuccess(res, payload);
   } catch (error: any) {
     console.error('Get dashboard stats error:', error);
     return sendError(res, 'Failed to fetch dashboard statistics', 500, error.message);

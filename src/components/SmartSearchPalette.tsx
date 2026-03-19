@@ -3,6 +3,7 @@ import { Search, FileText, Package, Building2, Loader2 } from 'lucide-react';
 import { dtrService } from '../services/dtr.service';
 import { rmaService } from '../services/rma.service';
 import { masterDataService } from '../services/masterData.service';
+import { usePermissions } from '../hooks/usePermissions';
 
 type ResultType = 'DTR' | 'RMA' | 'Site';
 
@@ -27,6 +28,9 @@ export function SmartSearchPalette({ open, onClose, onSelect }: SmartSearchPalet
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const sitesCacheRef = useRef<Array<{ id: string; siteName: string }>>([]);
+  const { role } = usePermissions();
+  const isStaff = role === 'staff';
 
   const runSearch = useCallback(async (q: string) => {
     const term = q.trim();
@@ -36,15 +40,21 @@ export function SmartSearchPalette({ open, onClose, onSelect }: SmartSearchPalet
     }
     setLoading(true);
     try {
+      const dtrPromise = isStaff
+        ? Promise.resolve({ success: false, data: { cases: [] } })
+        : dtrService.getAllDTRCases({ search: term, limit: 5 });
+
       const [dtrRes, rmaRes, sitesRes] = await Promise.all([
-        dtrService.getAllDTRCases({ search: term, limit: 5 }),
+        dtrPromise,
         rmaService.getAllRMACases({ search: term, limit: 5 }),
-        masterDataService.getAllSites().catch(() => ({ success: false, data: { sites: [] } })),
+        sitesCacheRef.current.length > 0
+          ? Promise.resolve({ success: true, data: { sites: sitesCacheRef.current } })
+          : masterDataService.getAllSites().catch(() => ({ success: false, data: { sites: [] } })),
       ]);
 
       const items: SearchResult[] = [];
 
-      if (dtrRes.success && dtrRes.data?.cases) {
+      if (!isStaff && dtrRes.success && dtrRes.data?.cases) {
         const cases = dtrRes.data.cases as any[];
         cases.forEach((c) => {
           const siteName = typeof c.site === 'object' && c.site?.siteName ? c.site.siteName : c.site || '';
@@ -73,6 +83,9 @@ export function SmartSearchPalette({ open, onClose, onSelect }: SmartSearchPalet
       }
 
       const siteList = sitesRes?.data?.sites ?? [];
+      if (siteList.length > 0 && sitesCacheRef.current.length === 0) {
+        sitesCacheRef.current = siteList;
+      }
       const siteMatches = siteList.filter(
         (s: { siteName?: string }) => s.siteName?.toLowerCase().includes(term.toLowerCase())
       ).slice(0, 3);
@@ -93,7 +106,7 @@ export function SmartSearchPalette({ open, onClose, onSelect }: SmartSearchPalet
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isStaff]);
 
   useEffect(() => {
     if (!open) return;
@@ -101,6 +114,17 @@ export function SmartSearchPalette({ open, onClose, onSelect }: SmartSearchPalet
     setResults([]);
     setSelectedIndex(0);
     setTimeout(() => inputRef.current?.focus(), 50);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || sitesCacheRef.current.length > 0) return;
+    void masterDataService.getAllSites().then((res) => {
+      if (res.success && res.data?.sites) {
+        sitesCacheRef.current = res.data.sites;
+      }
+    }).catch(() => {
+      // Ignore cache warm-up failures; search still works for DTR/RMA.
+    });
   }, [open]);
 
   useEffect(() => {

@@ -102,8 +102,9 @@ export interface RmaAgingResponse {
 
 export const analyticsService = {
   // Get dashboard statistics
-  async getDashboardStats() {
-    return await api.get<DashboardStats>('/analytics/dashboard');
+  async getDashboardStats(options?: { compact?: boolean }) {
+    const query = options?.compact ? '?compact=true' : '';
+    return await api.get<DashboardStats>(`/analytics/dashboard${query}`);
   },
 
   // Get trends (last 30 days)

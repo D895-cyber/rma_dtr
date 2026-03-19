@@ -15,11 +15,8 @@ export async function getUserNotifications(req: AuthRequest, res: Response) {
       where.read = read === 'true';
     }
 
-    const currentPage = Math.max(Number(page) || 1, 1);
-    const maxLimit = 100;
-    const parsedLimit = Number(limit) || 20;
-    const take = Math.max(1, Math.min(parsedLimit, maxLimit));
-    const skip = (currentPage - 1) * take;
+    const skip = (Number(page) - 1) * Number(limit);
+    const take = Number(limit);
 
     const [notifications, total] = await Promise.all([
       prisma.notification.findMany({
@@ -31,7 +28,7 @@ export async function getUserNotifications(req: AuthRequest, res: Response) {
       prisma.notification.count({ where }),
     ]);
 
-    return sendSuccess(res, { notifications, total, page: currentPage, limit: take });
+    return sendSuccess(res, { notifications, total, page: Number(page), limit: Number(limit) });
   } catch (error: any) {
     console.error('Get notifications error:', error);
     return sendError(res, 'Failed to fetch notifications', 500, error.message);

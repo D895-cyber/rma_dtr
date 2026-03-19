@@ -111,11 +111,29 @@ async function ensureAllRows() {
       });
       if (!creator) throw new Error(`User "${row.createdBy || 'admin@crm.com'}" not found`);
 
+      // Handle duplicates with suffixes
       let callLogNumber = row.callLogNumber ? String(row.callLogNumber).trim() : null;
+      if (callLogNumber) {
+        let suffix = 0;
+        let unique = callLogNumber;
+        while (await prisma.rmaCase.findFirst({ where: { callLogNumber: unique } })) {
+          suffix++;
+          unique = `${callLogNumber}-${suffix}`;
+        }
+        callLogNumber = unique;
+      }
 
       let rmaNumber = row.rmaNumber ? String(row.rmaNumber).trim() : null;
       if (rmaNumber === '-' || rmaNumber === '' || rmaNumber === '"-"') {
         rmaNumber = null;
+      } else if (rmaNumber) {
+        let suffix = 0;
+        let unique = rmaNumber;
+        while (await prisma.rmaCase.findFirst({ where: { rmaNumber: unique } })) {
+          suffix++;
+          unique = `${rmaNumber}-${suffix}`;
+        }
+        rmaNumber = unique;
       }
 
       let rmaType = (row.rmaType || 'RMA').trim();

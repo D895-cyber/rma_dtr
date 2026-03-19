@@ -123,16 +123,8 @@ export default defineConfig({
   },
   
   server: {
-    host: '127.0.0.1',
     port: 3000,
     open: true,
-    watch: {
-      // Ignore heavy backup folders that can stall watcher startup.
-      ignored: [
-        '**/node_modules_corrupt_*/**',
-        '**/backend/node_modules_corrupt_*/**',
-      ],
-    },
   },
   
   // Pre-bundle dependencies for faster dev server startup

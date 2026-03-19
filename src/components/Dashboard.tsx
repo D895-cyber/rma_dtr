@@ -69,9 +69,10 @@ export function Dashboard({ currentUser }: DashboardProps) {
     }
   };
 
-  const role = (currentUser?.role || '').toString().toLowerCase();
-  const isAdminOrManager = role === 'admin' || role === 'manager';
-  const isStaff = role === 'staff';
+  const isAdminOrManager = (() => {
+    const role = (currentUser?.role || '').toString().toLowerCase();
+    return role === 'admin' || role === 'manager';
+  })();
 
   const canViewDtr = (() => {
     const role = (currentUser?.role || '').toString().toLowerCase();
@@ -290,7 +291,6 @@ export function Dashboard({ currentUser }: DashboardProps) {
       )}
 
       {/* Widgets in user order */}
-      {!isStaff && visibleOrder.includes('dtr-stats') && (
       {canViewDtr && visibleOrder.includes('dtr-stats') && dtrStats && (
       <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 shadow-md overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -405,7 +405,6 @@ export function Dashboard({ currentUser }: DashboardProps) {
 
       {/* Recent Activity */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {!isStaff && visibleOrder.includes('recent-dtr') && (
         {canViewDtr && visibleOrder.includes('recent-dtr') && (
         /* Recent DTR */
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 shadow-md overflow-hidden">

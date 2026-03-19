@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, Download, Eye, List, UserCheck, Loader2, FileText } from 'lucide-react';
 import { useDTRCases, useUsersAPI } from '../hooks/useAPI';
 import { DTRForm } from './DTRForm';
@@ -36,17 +36,6 @@ export function DTRList({ currentUser, openCaseId, onOpenCaseHandled }: DTRListP
 
     return () => clearTimeout(timer);
   }, [searchTerm]);
-
-  // Server-side filtering keeps client work bounded and avoids full-list scans.
-  useEffect(() => {
-    void loadCases({
-      page: 1,
-      limit: 50,
-      search: debouncedSearchTerm || undefined,
-      status: statusFilter !== 'all' ? statusFilter : undefined,
-      severity: severityFilter !== 'all' ? severityFilter : undefined,
-    });
-  }, [loadCases, debouncedSearchTerm, statusFilter, severityFilter]);
 
   // Mark initial load complete once first data load finishes
   useEffect(() => {
@@ -138,7 +127,7 @@ export function DTRList({ currentUser, openCaseId, onOpenCaseHandled }: DTRListP
     return false;
   };
 
-  const filteredCases = useMemo(() => dtrCases.filter(dtr => {
+  const filteredCases = dtrCases.filter(dtr => {
     // For engineers: filter by view mode
     if (isEngineer && viewMode === 'assigned') {
       if (!isAssignedToCurrentUser(dtr)) {
@@ -148,20 +137,18 @@ export function DTRList({ currentUser, openCaseId, onOpenCaseHandled }: DTRListP
     
     const siteName = getSiteName(dtr.site);
     const audiNo = dtr.audi?.audiNo || dtr.audiNo || '';
-    const normalizedSearch = debouncedSearchTerm.toLowerCase();
-    const matchesSearch =
-      !normalizedSearch ||
-      (dtr.caseNumber?.toLowerCase() || '').includes(normalizedSearch) ||
-      (siteName?.toLowerCase() || '').includes(normalizedSearch) ||
-      (audiNo?.toLowerCase() || '').includes(normalizedSearch) ||
-      (dtr.unitModel?.toLowerCase() || '').includes(normalizedSearch) ||
-      (dtr.unitSerial?.toLowerCase() || '').includes(normalizedSearch);
+    const matchesSearch = 
+      (dtr.caseNumber?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (siteName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (audiNo?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (dtr.unitModel?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (dtr.unitSerial?.toLowerCase() || '').includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || dtr.callStatus === statusFilter;
     const matchesSeverity = severityFilter === 'all' || dtr.caseSeverity === severityFilter;
     
     return matchesSearch && matchesStatus && matchesSeverity;
-  }), [dtrCases, isEngineer, viewMode, currentUser, debouncedSearchTerm, statusFilter, severityFilter, users]);
+  });
 
   const handleExport = () => {
     const csv = [

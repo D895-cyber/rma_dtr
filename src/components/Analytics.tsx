@@ -56,53 +56,18 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     fetchTopProjectors();
   }, [topProjectorsDateRange.from, topProjectorsDateRange.to]);
 
-  // Load a bounded analytics dataset to avoid UI hangs on large installs.
+  // Load ALL cases for analytics by fetching all pages
   useEffect(() => {
     const fetchAllCases = async () => {
       setLoadingAllCases(true);
-
-      const MAX_CASES_PER_TYPE = 600;
-      const PAGE_SIZE = 100;
-      const maxPages = Math.ceil(MAX_CASES_PER_TYPE / PAGE_SIZE);
-
-      const loadCappedPages = async (
-        loader: (params: { page: number; limit: number }) => Promise<any>,
-      ) => {
-        const firstResponse = await loader({ page: 1, limit: PAGE_SIZE });
-        if (!firstResponse?.success || !firstResponse?.data) {
-          return [];
-        }
-
-        const firstCases = firstResponse.data.cases || [];
-        const total = Number(firstResponse.data.total || firstCases.length || 0);
-        const cappedTotal = Math.min(total, MAX_CASES_PER_TYPE);
-        const pagesToFetch = Math.min(Math.ceil(cappedTotal / PAGE_SIZE), maxPages);
-        const remainingPages = Array.from({ length: Math.max(0, pagesToFetch - 1) }, (_, i) => i + 2);
-
-        if (remainingPages.length === 0) {
-          return firstCases.slice(0, MAX_CASES_PER_TYPE);
-        }
-
-        const pageResponses = await Promise.all(
-          remainingPages.map((page) => loader({ page, limit: PAGE_SIZE })),
-        );
-
-        const merged = [firstCases];
-        for (const response of pageResponses) {
-          if (response?.success && response?.data?.cases?.length) {
-            merged.push(response.data.cases);
-          }
-        }
-        return merged.flat().slice(0, MAX_CASES_PER_TYPE);
-      };
-
+      
+      // Add a timeout to prevent infinite loading (5 minutes max)
+      const timeoutId = setTimeout(() => {
+        console.warn('Analytics loading timeout - setting loading to false');
+        setLoadingAllCases(false);
+      }, 5 * 60 * 1000);
+      
       try {
-        try {
-          const dtrCases = await loadCappedPages((params) => dtrService.getAllDTRCases(params));
-          setAllDTRCases(dtrCases);
-        } catch (dtrError) {
-          console.error('Error loading DTR cases:', dtrError);
-          setAllDTRCases([]);
         // Fetch all DTR cases (not available to staff)
         const dtrCases: any[] = [];
         let dtrTotal = 0;
@@ -140,20 +105,58 @@ export function Analytics({ currentUser }: AnalyticsProps) {
             console.error('Error loading DTR cases:', dtrError);
           }
         }
-
+        
+        // Fetch all RMA cases
+        const rmaCases: any[] = [];
+        let rmaPage = 1;
+        let rmaTotal = 0;
+        
         try {
-          const rmaCases = await loadCappedPages((params) => rmaService.getAllRMACases(params));
-          setAllRMACases(rmaCases);
+          // First, get the total count
+          const firstRMAResponse = await rmaService.getAllRMACases({ page: 1, limit: 100 });
+          console.log('RMA Response:', firstRMAResponse);
+          
+          if (firstRMAResponse && firstRMAResponse.success && firstRMAResponse.data) {
+            const cases = firstRMAResponse.data.cases || [];
+            rmaCases.push(...cases);
+            rmaTotal = firstRMAResponse.data.total || cases.length;
+            
+            // Continue fetching remaining pages
+            if (rmaTotal > cases.length) {
+              while (rmaCases.length < rmaTotal) {
+                rmaPage++;
+                try {
+                  const response = await rmaService.getAllRMACases({ page: rmaPage, limit: 100 });
+                  if (response && response.success && response.data && response.data.cases && response.data.cases.length > 0) {
+                    rmaCases.push(...response.data.cases);
+                  } else {
+                    break;
+                  }
+                } catch (pageError) {
+                  console.error(`Error loading RMA page ${rmaPage}:`, pageError);
+                  break;
+                }
+              }
+            }
+          } else {
+            console.warn('RMA response was not successful or missing data:', firstRMAResponse);
+          }
         } catch (rmaError) {
           console.error('Error loading RMA cases:', rmaError);
-          setAllRMACases([]);
         }
+        
+        console.log(`Analytics: Loaded ${dtrCases.length} DTR cases (total: ${dtrTotal})`);
+        console.log(`Analytics: Loaded ${rmaCases.length} RMA cases (total: ${rmaTotal})`);
+        
+        setAllDTRCases(dtrCases);
+        setAllRMACases(rmaCases);
       } catch (error) {
         console.error('Error loading all cases for analytics:', error);
         // Set empty arrays on error so the page can still render
         setAllDTRCases([]);
         setAllRMACases([]);
       } finally {
+        clearTimeout(timeoutId);
         setLoadingAllCases(false);
       }
     };
@@ -415,39 +418,39 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   };
 
   // Overdue Analysis
-  const overdueReplacementShipping = useMemo(() => rmaCases.filter(rma => {
+  const overdueReplacementShipping = rmaCases.filter(rma => {
     if (rma.status === 'closed' || rma.status === 'cancelled') return false;
     if (rma.shippedDate) return false;
     const daysSinceRaised = daysBetween(rma.rmaRaisedDate, today);
     return daysSinceRaised !== null && daysSinceRaised > 30;
-  }), [rmaCases, today]);
+  });
 
-  const overdueDefectiveReturn = useMemo(() => rmaCases.filter(rma => {
+  const overdueDefectiveReturn = rmaCases.filter(rma => {
     if (rma.status === 'closed' || rma.status === 'cancelled') return false;
     if (!rma.shippedDate) return false;
     if (rma.returnShippedDate) return false;
     const daysSinceShipped = daysBetween(rma.shippedDate, today);
     return daysSinceShipped !== null && daysSinceShipped > 30;
-  }), [rmaCases, today]);
+  });
 
   // DTR vs RMA counts
   const totalDTR = dtrCases.length;
   const totalRMA = rmaCases.length;
 
   // Status breakdown
-  const dtrByStatus = useMemo(() => [
+  const dtrByStatus = [
     { name: 'Open', count: dtrCases.filter(d => d.callStatus === 'open').length, color: '#f59e0b' },
     { name: 'In Progress', count: dtrCases.filter(d => d.callStatus === 'in_progress').length, color: '#3b82f6' },
     { name: 'Closed', count: dtrCases.filter(d => d.callStatus === 'closed').length, color: '#10b981' },
     { name: 'Escalated', count: dtrCases.filter(d => d.callStatus === 'escalated').length, color: '#8b5cf6' },
-  ], [dtrCases]);
+  ];
 
-  const rmaByStatus = useMemo(() => [
+  const rmaByStatus = [
     { name: 'Open', count: rmaCases.filter(r => r.status === 'open').length, color: '#f59e0b' },
     { name: 'RMA Raised - Yet to Deliver', count: rmaCases.filter(r => r.status === 'rma_raised_yet_to_deliver').length, color: '#8b5cf6' },
     { name: 'Faulty in Transit to CDS', count: rmaCases.filter(r => r.status === 'faulty_in_transit_to_cds').length, color: '#3b82f6' },
     { name: 'Closed', count: rmaCases.filter(r => r.status === 'closed').length, color: '#10b981' },
-  ], [rmaCases]);
+  ];
 
   // RMA Type breakdown
   // Backend/API uses enum values: 'RMA', 'SRMA', 'RMA_CL', 'Lamps'
@@ -457,19 +460,19 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     { name: 'SRMA', count: rmaCases.filter(r => r.rmaType === 'SRMA').length, color: '#8b5cf6' },
     { name: 'RMA CL', count: rmaCases.filter(r => r.rmaType === 'RMA_CL').length, color: '#f59e0b' },
     { name: 'Lamps', count: rmaCases.filter(r => r.rmaType === 'Lamps').length, color: '#10b981' },
-  ], [rmaCases]);
+  ];
 
   // Site-wise RMA frequency (Top 20)
-  const rmaSiteStats = useMemo(() => rmaCases.reduce((acc, rma) => {
+  const rmaSiteStats = rmaCases.reduce((acc, rma) => {
     const siteName = getSiteName(rma.site || rma.siteName);
     acc[siteName] = (acc[siteName] || 0) + 1;
     return acc;
-  }, {} as Record<string, number>), [rmaCases]);
+  }, {} as Record<string, number>);
 
-  const sitewiseRMAData = useMemo(() => Object.entries(rmaSiteStats)
+  const sitewiseRMAData = Object.entries(rmaSiteStats)
     .map(([site, count]) => ({ site, count: Number(count) }))
     .sort((a, b) => b.count - a.count)
-    .slice(0, 20), [rmaSiteStats]);
+    .slice(0, 20);
 
   // Turnaround time for closed RMAs
   const closedRMAsWithValidDates = rmaCases.filter(r => {
@@ -1053,34 +1056,6 @@ export function Analytics({ currentUser }: AnalyticsProps) {
         {/* RMA Type Distribution */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h3 className="text-gray-900 mb-4">RMA Type Distribution</h3>
-          <div className="flex flex-col sm:flex-row items-center gap-4">
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={rmaByType}
-                  dataKey="count"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={70}
-                  label={false}
-                >
-                  {rmaByType.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => [value, 'Count']} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 w-full sm:w-auto sm:flex-col sm:min-w-[140px]">
-              {rmaByType.map((entry, index) => (
-                <div key={`legend-${index}`} className="flex items-center gap-2">
-                  <span
-                    className="inline-block w-3 h-3 rounded-full shrink-0"
-                    style={{ backgroundColor: entry.color }}
-                  />
-                  <span className="text-sm text-gray-700">
-                    {entry.name}: <span className="font-medium">{entry.count}</span>
           <div className="grid grid-cols-1 md:grid-cols-[2fr,minmax(0,1fr)] gap-4 items-center">
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">

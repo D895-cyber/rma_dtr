@@ -151,11 +151,32 @@ async function importMissingRows() {
         throw new Error(`User "${row.createdBy || 'admin@crm.com'}" not found`);
       }
 
+      // Handle callLogNumber with suffix handling
       let callLogNumber = row.callLogNumber ? String(row.callLogNumber).trim() : null;
+      if (callLogNumber) {
+        let suffix = 0;
+        let uniqueCallLogNumber = callLogNumber;
+        
+        while (await prisma.rmaCase.findFirst({ where: { callLogNumber: uniqueCallLogNumber } })) {
+          suffix++;
+          uniqueCallLogNumber = `${callLogNumber}-${suffix}`;
+        }
+        callLogNumber = uniqueCallLogNumber;
+      }
 
+      // Handle rmaNumber
       let rmaNumber = row.rmaNumber ? String(row.rmaNumber).trim() : null;
       if (rmaNumber === '-' || rmaNumber === '' || rmaNumber === '"-"') {
         rmaNumber = null;
+      } else if (rmaNumber) {
+        let suffix = 0;
+        let uniqueRmaNumber = rmaNumber;
+        
+        while (await prisma.rmaCase.findFirst({ where: { rmaNumber: uniqueRmaNumber } })) {
+          suffix++;
+          uniqueRmaNumber = `${rmaNumber}-${suffix}`;
+        }
+        rmaNumber = uniqueRmaNumber;
       }
 
       // Normalize RMA type

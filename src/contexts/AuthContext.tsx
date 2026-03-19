@@ -27,13 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const token = localStorage.getItem('auth_token');
       if (token) {
-        // Prevent the UI from getting stuck on auth loading forever.
-        const response = await Promise.race([
-          authService.getCurrentUser(),
-          new Promise<{ success: false; message: string }>((resolve) =>
-            setTimeout(() => resolve({ success: false, message: 'Auth check timeout' }), 10000)
-          ),
-        ]);
+        const response = await authService.getCurrentUser();
         if (response.success && response.data) {
           // API returns user data directly in response.data, not response.data.user
           const userData = response.data.user || response.data;

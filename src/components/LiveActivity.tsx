@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { notificationService } from '../services/notification.service';
 
-const POLL_INTERVAL_MS = 60000; // 60 seconds
+const POLL_INTERVAL_MS = 30000; // 30 seconds
 
 /**
  * Polls for new notifications and shows a toast when something new arrives ("Case X was updated").
@@ -14,8 +14,7 @@ export function LiveActivity() {
 
   useEffect(() => {
     const poll = async () => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      const res = await notificationService.getNotifications({ page: 1, limit: 20 });
+      const res = await notificationService.getNotifications();
       if (!res.success || !res.data?.notifications) return;
       const list = res.data.notifications as Array<{ id: string; title: string; message?: string }>;
       for (const n of list) {

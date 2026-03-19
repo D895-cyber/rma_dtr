@@ -38,7 +38,6 @@ export const dtrService = {
     search?: string;
     page?: number;
     limit?: number;
-    includeAudit?: boolean;
   }) {
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
@@ -47,7 +46,6 @@ export const dtrService = {
     if (filters?.search) params.append('search', filters.search);
     if (filters?.page) params.append('page', filters.page.toString());
     if (filters?.limit) params.append('limit', filters.limit.toString());
-    if (filters?.includeAudit) params.append('includeAudit', 'true');
     
     const query = params.toString() ? `?${params.toString()}` : '';
     return await api.get<{ cases: DTRCase[]; total: number; page: number; limit: number }>(`/dtr${query}`);

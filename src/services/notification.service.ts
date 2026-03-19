@@ -16,13 +16,8 @@ export interface Notification {
 
 export const notificationService = {
   // Get all notifications for current user
-  async getNotifications(params?: { page?: number; limit?: number; read?: boolean }) {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.append('page', String(params.page));
-    if (params?.limit) searchParams.append('limit', String(params.limit));
-    if (params?.read !== undefined) searchParams.append('read', String(params.read));
-    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
-    return await api.get<{ notifications: Notification[]; total: number }>(`/notifications${query}`);
+  async getNotifications() {
+    return await api.get<{ notifications: Notification[]; total: number }>('/notifications');
   },
 
   // Get unread count

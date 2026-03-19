@@ -18,7 +18,7 @@ interface RMAFormProps {
 
 export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId }: RMAFormProps) {
   const today = new Date().toISOString().split('T')[0];
-  const { sites, getAudisBySite, projectors } = useMasterDataAPI();
+  const { sites, getAudisBySite, getProjectorByAudi, projectors } = useMasterDataAPI();
   const { users, loading: usersLoading } = useUsersAPI();
   
   // Get engineers reactively (updates when users load)
@@ -64,15 +64,7 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId 
 
   const [selectedSite, setSelectedSite] = useState('');
   const [selectedSiteId, setSelectedSiteId] = useState('');
-  const [availableSerials, setAvailableSerials] = useState<
-    Array<{
-      serialNumber: string;
-      audiId: string;
-      audiNo: string;
-      modelNo: string;
-      projectorModelId?: string;
-    }>
-  >([]);
+  const [availableAudis, setAvailableAudis] = useState<Array<{id: string; audiNo: string}>>([]);
   const [availableParts, setAvailableParts] = useState<Part[]>([]);
   const [loadingParts, setLoadingParts] = useState(false);
   const [useCustomPart, setUseCustomPart] = useState(false);
@@ -111,21 +103,7 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId 
   useEffect(() => {
     if (selectedSite && selectedSiteId) {
       const audis = getAudisBySite(selectedSite);
-      const serialMappings = audis
-        .map((audi: any) => {
-          const linkedProjector =
-            (audi.projectorId && projectors.find((p) => p.id === audi.projectorId)) || audi.projector;
-          if (!linkedProjector?.serialNumber) return null;
-          return {
-            serialNumber: linkedProjector.serialNumber,
-            audiId: audi.id,
-            audiNo: audi.audiNo,
-            modelNo: linkedProjector.projectorModel?.modelNo || '',
-            projectorModelId: linkedProjector.projectorModelId || linkedProjector.projectorModel?.id,
-          };
-        })
-        .filter((item: any): item is NonNullable<typeof item> => Boolean(item));
-      setAvailableSerials(serialMappings);
+      setAvailableAudis(audis);
       setFormData(prev => ({ 
         ...prev, 
         siteName: selectedSite, 
@@ -135,51 +113,44 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId 
         productName: '', 
         serialNumber: '' 
       }));
-      setProjectorModelId('');
-      setAvailableParts([]);
-      setSelectedPartId('');
     } else {
-      setAvailableSerials([]);
+      setAvailableAudis([]);
       setFormData(prev => ({ ...prev, audiNo: '', audiId: '', productName: '', serialNumber: '' }));
-      setProjectorModelId('');
-      setAvailableParts([]);
-      setSelectedPartId('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSite, selectedSiteId, projectors]);
+  }, [selectedSite, selectedSiteId]);
 
-  // Handle serial selection - auto-fill audi and model details
-  const handleSerialChange = async (serialNumber: string) => {
-    const serialInfo = availableSerials.find((item) => item.serialNumber === serialNumber);
-    if (!serialInfo) {
-      setFormData((prev) => ({
+  // Handle audi selection - auto-fill projector details and load parts
+  const handleAudiChange = async (audiId: string, audiNo: string) => {
+    const projectorInfo = getProjectorByAudi(selectedSite, audiNo);
+    if (projectorInfo) {
+      // Find the full projector object to get projectorModelId
+      const fullProjector = projectors.find(p => p.id === projectorInfo.id);
+      
+      setFormData(prev => ({
         ...prev,
-        serialNumber: '',
-        audiNo: '',
-        audiId: '',
-        productName: '',
+        audiNo,
+        audiId,
+        productName: projectorInfo.modelNo,
+        serialNumber: projectorInfo.serialNumber,
       }));
-      setProjectorModelId('');
-      setAvailableParts([]);
-      setSelectedPartId('');
-      return;
-    }
 
-    setFormData((prev) => ({
-      ...prev,
-      serialNumber: serialInfo.serialNumber,
-      audiNo: serialInfo.audiNo,
-      audiId: serialInfo.audiId,
-      productName: serialInfo.modelNo,
-    }));
+      // Store projector model ID for creating custom parts
+      if (fullProjector?.projectorModelId) {
+        setProjectorModelId(fullProjector.projectorModelId);
+      } else if (fullProjector?.projectorModel?.id) {
+        setProjectorModelId(fullProjector.projectorModel.id);
+      }
 
-    setProjectorModelId(serialInfo.projectorModelId || '');
-
-    if (serialInfo.modelNo) {
-      await loadPartsForModel(serialInfo.modelNo);
+      // Fetch parts for this projector model
+      if (projectorInfo.modelNo) {
+        await loadPartsForModel(projectorInfo.modelNo);
+      }
     } else {
+      setFormData(prev => ({ ...prev, audiNo, audiId, productName: '', serialNumber: '' }));
       setAvailableParts([]);
       setSelectedPartId('');
+      setProjectorModelId('');
     }
   };
 
@@ -254,9 +225,9 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId 
 
           if (createResult.success) {
             // Reload parts list in background to avoid delaying RMA submission.
-            const selectedSerial = availableSerials.find((s) => s.serialNumber === formData.serialNumber);
-            if (selectedSerial?.modelNo) {
-              void loadPartsForModel(selectedSerial.modelNo);
+            const projector = getProjectorByAudi(selectedSite, formData.audiNo);
+            if (projector?.modelNo) {
+              void loadPartsForModel(projector.modelNo);
             }
             console.log('Custom part added successfully:', createResult.data?.part);
           } else {
@@ -435,47 +406,39 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId 
 
           <div>
             <label className="block text-sm text-gray-700 mb-2">
-              Serial Number <span className="text-red-500">*</span>
+              Audi No <span className="text-red-500">*</span>
             </label>
             <select
-              value={formData.serialNumber || ''}
+              value={formData.audiNo || ''}
               onChange={(e) => {
-                const serial = e.target.value;
-                void handleSerialChange(serial);
+                const audiNo = e.target.value;
+                if (!audiNo) return;
+                const audi = availableAudis.find(a => a.audiNo === audiNo);
+                if (audi) {
+                  handleAudiChange(audi.id, audi.audiNo);
+                } else {
+                  console.log('Audi not found:', audiNo, 'Available:', availableAudis);
+                }
               }}
               disabled={!selectedSite}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
               required
             >
-              <option value="">Select Serial Number</option>
-              {availableSerials.length === 0 && selectedSite && (
-                <option value="" disabled>No serial numbers available for this site</option>
+              <option value="">Select Audi</option>
+              {availableAudis.length === 0 && selectedSite && (
+                <option value="" disabled>No audis available for this site</option>
               )}
-              {availableSerials.map((item) => (
-                <option key={`${item.audiId}-${item.serialNumber}`} value={item.serialNumber}>
-                  {item.serialNumber}
+              {availableAudis.map((audi) => (
+                <option key={audi.id} value={audi.audiNo}>
+                  {audi.audiNo}
                 </option>
               ))}
             </select>
-            {selectedSite && availableSerials.length === 0 && (
+            {selectedSite && availableAudis.length === 0 && (
               <p className="text-xs text-orange-600 mt-1">
-                No mapped serial numbers found for this site. Please map projectors to audis in Master Data first.
+                No audis found for this site. Please add audis in Master Data first.
               </p>
             )}
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-700 mb-2">
-              Audi No <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={formData.audiNo}
-              readOnly
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              placeholder="Auto-filled from serial selection"
-              required
-            />
           </div>
 
           <div>
@@ -487,7 +450,7 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId 
               value={formData.productName}
               readOnly
               className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-              placeholder="Auto-filled from serial selection"
+              placeholder="Auto-filled from Audi selection"
               required
             />
           </div>
@@ -502,6 +465,20 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId 
               onChange={(e) => setFormData({ ...formData, productPartNumber: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g., EB-L1500U"
+              required
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm text-gray-700 mb-2">
+              Serial Number <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.serialNumber}
+              readOnly
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+              placeholder="Auto-filled from Audi selection"
               required
             />
           </div>
@@ -881,9 +858,7 @@ export function RMAForm({ currentUser, dtrCaseNumber, onClose, onSubmit, caseId 
               />
             </div>
             <div>
-              <div key={refreshAttachments}>
-                <AttachmentList caseId={caseId} caseType="RMA" />
-              </div>
+              <AttachmentList key={refreshAttachments} caseId={caseId} caseType="RMA" />
             </div>
           </div>
         )}

@@ -8,11 +8,8 @@ import { FieldModeProvider } from "./contexts/FieldModeContext";
 import { measurePageLoad } from "./utils/performance";
 import { registerSW } from "virtual:pwa-register";
 
-// Register service worker only in production.
-// In dev, SW can cache stale assets and cause blank screens.
-if (import.meta.env.PROD) {
-  registerSW({ immediate: true });
-}
+// Register service worker for PWA (auto-update on new build)
+registerSW({ immediate: true });
 
 // Measure page load performance
 measurePageLoad();

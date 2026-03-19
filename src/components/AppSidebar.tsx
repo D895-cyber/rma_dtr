@@ -55,14 +55,12 @@ export function AppSidebar({
     rmaPending: 0,
   });
   const [loading, setLoading] = useState(true);
-  const isStaff = (currentUser?.role || '').toString().toLowerCase() === 'staff';
 
   // Fetch badge counts
   useEffect(() => {
     const loadBadges = async () => {
-      if (typeof document !== 'undefined' && document.hidden) return;
       try {
-        const response = await analyticsService.getDashboardStats({ compact: true });
+        const response = await analyticsService.getDashboardStats();
         if (response.data) {
           setBadges({
             dtrOpen: response.data.dtr.open || 0,
@@ -79,8 +77,8 @@ export function AppSidebar({
     };
 
     loadBadges();
-    // Refresh badges every 60 seconds and skip hidden tabs.
-    const interval = setInterval(loadBadges, 60000);
+    // Refresh badges every 30 seconds
+    const interval = setInterval(loadBadges, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -112,10 +110,6 @@ export function AppSidebar({
       badge: null,
     },
   ];
-
-  const filteredNavigationItems = isStaff
-    ? navigationItems.filter((item) => item.id !== 'dtr')
-    : navigationItems;
 
   const masterDataItems = [
     {
@@ -192,7 +186,7 @@ export function AppSidebar({
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {filteredNavigationItems.map((item) => {
+              {navigationItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
                 return (

@@ -23,6 +23,13 @@ export interface RMACase {
   defectivePartSerial?: string;
   isDefectivePartDNR?: boolean;
   defectivePartDNRReason?: string;
+  isDOA?: boolean | null;
+  doaSuggested?: boolean;
+  doaSuggestedByCaseId?: string | null;
+  doaSuggestedWindowDays?: number;
+  doaDecisionAt?: string | null;
+  doaDecisionBy?: string | null;
+  doaNotes?: string | null;
   replacedPartNumber?: string;
   replacedPartSerial?: string;
   symptoms?: string;
@@ -56,6 +63,7 @@ export const rmaService = {
     dateTo?: string;
     year?: string;
     dnr?: boolean;
+    doa?: boolean;
     ageDays?: number;
   }) {
     const params = new URLSearchParams();
@@ -71,6 +79,7 @@ export const rmaService = {
     if (filters?.dateTo) params.append('dateTo', filters.dateTo);
     if (filters?.year) params.append('year', filters.year);
     if (filters?.dnr) params.append('dnr', 'true');
+    if (filters?.doa) params.append('doa', 'true');
     if (filters?.ageDays) params.append('ageDays', filters.ageDays.toString());
     
     const query = params.toString() ? `?${params.toString()}` : '';
@@ -89,6 +98,7 @@ export const rmaService = {
         closed: number;
         cancelled: number;
         dnr: number;
+        doa?: number;
       };
     }>(`/rma${query}`);
   },

@@ -1,6 +1,9 @@
 import { Response } from 'express';
 
 export function sendSuccess(res: Response, data: any, message?: string, statusCode: number = 200) {
+  if (res.headersSent) {
+    return res;
+  }
   return res.status(statusCode).json({
     success: true,
     message: message || 'Success',
@@ -9,6 +12,9 @@ export function sendSuccess(res: Response, data: any, message?: string, statusCo
 }
 
 export function sendError(res: Response, message: string, statusCode: number = 400, error?: any) {
+  if (res.headersSent) {
+    return res;
+  }
   return res.status(statusCode).json({
     success: false,
     message,

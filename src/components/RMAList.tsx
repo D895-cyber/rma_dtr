@@ -21,10 +21,12 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [ageFilter, setAgeFilter] = useState<string>('all'); // 'all' | '30' | '60' | '90'
+  const [returnTatBucket, setReturnTatBucket] = useState<string>('all'); // 'all' | 'within7' | 'over7' | '0_3' | '4_7' | '8_14' | '15_plus'
   const [yearFilter, setYearFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [dnrFilter, setDnrFilter] = useState<boolean>(false); // Filter for DNR (Do Not Return) cases
+  const [doaFilter, setDoaFilter] = useState<boolean>(false); // Filter for DOA (Dead On Arrival) cases
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [allRMACases, setAllRMACases] = useState<any[]>([]);
@@ -40,6 +42,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
     closed: number;
     cancelled: number;
     dnr: number;
+    doa?: number;
   } | null>(null);
   const [serverYears, setServerYears] = useState<number[]>([]);
   const pageSize = 50;
@@ -77,6 +80,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
     { key: 'returnTrackingNumber', label: 'Return Tracking' },
     { key: 'returnShippedThrough', label: 'Return Carrier' },
     { key: 'returnShippedDate', label: 'Return Shipped Date' },
+    { key: 'returnTatDays', label: 'Return TAT (days)' },
     { key: 'replacedPartNumber', label: 'Replacement Part Number' },
     { key: 'replacedPartSerial', label: 'Replacement Part Serial' },
     { key: 'trackingNumberOut', label: 'Out Tracking' },
@@ -115,6 +119,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
         dateTo: dateTo || undefined,
         year: !dateFrom && !dateTo && yearFilter !== 'all' ? yearFilter : undefined,
         dnr: dnrFilter || undefined,
+        doa: doaFilter || undefined,
         ageDays: parsedAgeDays,
       });
       if (response.success && response.data) {
@@ -135,12 +140,12 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
   // Reload page data when server-side filters/search/page change.
   useEffect(() => {
     void fetchAllCases(currentPage);
-  }, [currentPage, statusFilter, typeFilter, debouncedSearchTerm, dateFrom, dateTo, yearFilter, dnrFilter, ageFilter]);
+  }, [currentPage, statusFilter, typeFilter, debouncedSearchTerm, dateFrom, dateTo, yearFilter, dnrFilter, doaFilter, ageFilter]);
 
   // Reset to first page when server-side filters change.
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, typeFilter, debouncedSearchTerm, dateFrom, dateTo, yearFilter, dnrFilter, ageFilter]);
+  }, [statusFilter, typeFilter, debouncedSearchTerm, dateFrom, dateTo, yearFilter, dnrFilter, doaFilter, ageFilter]);
 
   // Open case from global search when list has loaded
   useEffect(() => {
@@ -249,6 +254,39 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
     }
   };
 
+  // Defective part return turnaround time in days: rmaRaisedDate -> returnShippedDate
+  const getReturnTatDays = (rmaRaisedDate: string | null | undefined, returnShippedDate: string | null | undefined): number | null => {
+    if (!rmaRaisedDate || !returnShippedDate) return null;
+    const start = new Date(rmaRaisedDate);
+    const end = new Date(returnShippedDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+    const diffMs = end.getTime() - start.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 ? diffDays : null;
+  };
+
+  const matchesReturnTatBucket = (days: number | null, bucket: string): boolean => {
+    if (bucket === 'all') return true;
+    if (days === null) return false;
+    if (bucket === 'within7') return days <= 7;
+    if (bucket === 'over7') return days > 7;
+    if (bucket === '0_3') return days >= 0 && days <= 3;
+    if (bucket === '4_7') return days >= 4 && days <= 7;
+    if (bucket === '8_14') return days >= 8 && days <= 14;
+    if (bucket === '15_plus') return days >= 15;
+    return true;
+  };
+
+  const getReturnTatBucketLabel = (bucket: string): string => {
+    if (bucket === 'within7') return 'Within 7 days';
+    if (bucket === 'over7') return 'Over 7 days';
+    if (bucket === '0_3') return '0-3 days';
+    if (bucket === '4_7') return '4-7 days';
+    if (bucket === '8_14') return '8-14 days';
+    if (bucket === '15_plus') return '15+ days';
+    return 'All';
+  };
+
   // Available years:
   // - prefer server-provided distinct years across the filtered dataset
   // - fallback to current page (better than empty)
@@ -260,7 +298,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
 
   const availableYears: number[] = serverYears && serverYears.length > 0 ? serverYears : uniquePageYears;
 
-  // Check if any filters are active (search, status, type, date range, year, age, dnr)
+  // Check if any filters are active (search, status, type, date range, year, age, dnr, doa)
   const hasActiveFilters = debouncedSearchTerm || 
     statusFilter !== 'all' || 
     typeFilter !== 'all' || 
@@ -268,10 +306,18 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
     dateTo || 
     yearFilter !== 'all' || 
     ageFilter !== 'all' ||
-    dnrFilter;
-
-  // Cases are already globally filtered server-side (across all pages), this page just renders current slice.
-  const filteredCases = allRMACases;
+    returnTatBucket !== 'all' ||
+    dnrFilter ||
+    doaFilter;
+  // Cases are server-filtered first, then optionally bucket-filtered by Return TAT.
+  const filteredCases = useMemo(
+    () =>
+      allRMACases.filter((rma) =>
+        matchesReturnTatBucket(getReturnTatDays(rma.rmaRaisedDate, rma.returnShippedDate), returnTatBucket)
+      ),
+    [allRMACases, returnTatBucket]
+  );
+  const displayedTotalCases = returnTatBucket === 'all' ? totalCases : filteredCases.length;
 
   // Prefer backend aggregate stats (global filtered dataset), fallback to current page data.
   const rmaStats = useMemo(() => {
@@ -287,8 +333,24 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
       closed: filteredCases.filter(r => r.status === 'closed').length,
       cancelled: filteredCases.filter(r => r.status === 'cancelled').length,
       dnr: filteredCases.filter(r => r.isDefectivePartDNR === true).length,
+      doa: filteredCases.filter(r => r.isDOA === true).length,
     };
   }, [serverStats, filteredCases]);
+
+  const doaCount = useMemo(() => {
+    if (typeof (rmaStats as any).doa === 'number') return (rmaStats as any).doa as number;
+    return filteredCases.filter(r => r.isDOA === true).length;
+  }, [rmaStats, filteredCases]);
+
+  const returnTatDays = useMemo(
+    () =>
+      filteredCases
+        .map((rma) => getReturnTatDays(rma.rmaRaisedDate, rma.returnShippedDate))
+        .filter((days): days is number => days !== null),
+    [filteredCases]
+  );
+  const within7DaysCount = useMemo(() => returnTatDays.filter((days) => days <= 7).length, [returnTatDays]);
+  const over7DaysCount = useMemo(() => returnTatDays.filter((days) => days > 7).length, [returnTatDays]);
 
   // Export scope preview:
   // - active filters/search => export filtered view
@@ -408,6 +470,10 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
         return rma.returnShippedThrough || '-';
       case 'returnShippedDate':
         return formatDateForCSV(rma.returnShippedDate);
+      case 'returnTatDays': {
+        const tatDays = getReturnTatDays(rma.rmaRaisedDate, rma.returnShippedDate);
+        return tatDays !== null ? String(tatDays) : '-';
+      }
       case 'replacedPartNumber':
         return rma.replacedPartNumber || '-';
       case 'replacedPartSerial':
@@ -468,6 +534,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             dateTo: dateTo || undefined,
             year: !dateFrom && !dateTo && yearFilter !== 'all' ? yearFilter : undefined,
             dnr: dnrFilter || undefined,
+            doa: doaFilter || undefined,
             ageDays: parsedAgeDays,
           });
           if (!res.success || !res.data) break;
@@ -487,6 +554,11 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
         // Apply export dialog date range on top of the base export set (if provided)
         if (exportDateFrom || exportDateTo) {
           casesToExport = casesToExport.filter(r => isDateInRange(r.rmaRaisedDate, exportDateFrom, exportDateTo));
+        }
+        if (returnTatBucket !== 'all') {
+          casesToExport = casesToExport.filter((r) =>
+            matchesReturnTatBucket(getReturnTatDays(r.rmaRaisedDate, r.returnShippedDate), returnTatBucket)
+          );
         }
 
         if (casesToExport.length === 0) {
@@ -626,6 +698,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
           'Return Shipped Through': rma.returnShippedThrough || '-',
           'Return Tracking Number': rma.returnTrackingNumber || '-',
           'Return Shipped Date': rma.returnShippedDate ? formatDateForCSV(rma.returnShippedDate) : '-',
+          'Return TAT (days)': getReturnTatDays(rma.rmaRaisedDate, rma.returnShippedDate) ?? '-',
           'Status': rma.status || '-',
           'Created By': getUserName(rma.creator || rma.createdBy),
           'Assigned To': getUserName(rma.assignee || rma.assignedTo) || '-',
@@ -710,7 +783,10 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
           currentUser={currentUser}
           onClose={() => setSelectedRMA(null)}
           onUpdate={async (id, data, userEmail, action, details) => {
-            await rmaService.updateRMACase(id, data);
+            const res = await rmaService.updateRMACase(id, data);
+            if (!res.success) {
+              throw new Error(res.message || 'Failed to update RMA case');
+            }
             // Reload current page after update
             await fetchAllCases(currentPage);
           }}
@@ -789,9 +865,11 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             onClick={() => {
               setStatusFilter('all');
               setDnrFilter(false);
+              setDoaFilter(false);
               setSearchTerm('');
               setTypeFilter('all');
               setAgeFilter('all');
+              setReturnTatBucket('all');
               setYearFilter('all');
               setDateFrom('');
               setDateTo('');
@@ -811,6 +889,8 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             onClick={() => {
               setStatusFilter('open');
               setDnrFilter(false);
+              setDoaFilter(false);
+              setReturnTatBucket('all');
             }}
             className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-orange-400"
             title="Click to filter by Open cases"
@@ -828,6 +908,8 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             onClick={() => {
               setStatusFilter('pending');
               setDnrFilter(false);
+              setDoaFilter(false);
+              setReturnTatBucket('all');
             }}
             className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-blue-400"
             title="Click to filter by Pending cases (Yet to Deliver + In Transit)"
@@ -845,6 +927,8 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             onClick={() => {
               setStatusFilter('rma_raised_yet_to_deliver');
               setDnrFilter(false);
+              setDoaFilter(false);
+              setReturnTatBucket('all');
             }}
             className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-yellow-400"
             title="Click to filter by Yet to Deliver cases"
@@ -862,6 +946,8 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             onClick={() => {
               setStatusFilter('faulty_in_transit_to_cds');
               setDnrFilter(false);
+              setDoaFilter(false);
+              setReturnTatBucket('all');
             }}
             className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-purple-400"
             title="Click to filter by In Transit cases"
@@ -879,6 +965,8 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             onClick={() => {
               setStatusFilter('closed');
               setDnrFilter(false);
+              setDoaFilter(false);
+              setReturnTatBucket('all');
             }}
             className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-green-400"
             title="Click to filter by Closed cases"
@@ -891,28 +979,76 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             <p className="text-xs text-gray-500 mt-1">{rmaStats.total > 0 ? Math.round((rmaStats.closed / rmaStats.total) * 100) : 0}%</p>
           </div>
           
-          {/* Cancelled */}
+          {/* DOA Count */}
           <div 
             onClick={() => {
-              setStatusFilter('cancelled');
+              setDoaFilter(!doaFilter);
               setDnrFilter(false);
+              setStatusFilter('all');
+              setReturnTatBucket('all');
             }}
-            className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-red-400"
-            title="Click to filter by Cancelled cases"
+            className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow cursor-pointer ${
+              doaFilter ? 'border-amber-500 border-2 bg-amber-50' : 'border-gray-200 hover:border-amber-400'
+            }`}
+            title="Click to filter by DOA (Dead On Arrival) cases"
           >
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-gray-600 font-medium">Cancelled</p>
+              <p className="text-xs text-gray-600 font-medium">DOA Count</p>
               <XCircle className="w-4 h-4 text-red-600" />
             </div>
-            <p className="text-2xl font-bold text-gray-900">{rmaStats.cancelled}</p>
-            <p className="text-xs text-gray-500 mt-1">{rmaStats.total > 0 ? Math.round((rmaStats.cancelled / rmaStats.total) * 100) : 0}%</p>
+            <p className="text-2xl font-bold text-gray-900">{doaCount}</p>
+            <p className="text-xs text-gray-500 mt-1">{rmaStats.total > 0 ? Math.round((doaCount / rmaStats.total) * 100) : 0}%</p>
+          </div>
+
+          {/* Return TAT: Within 7 Days */}
+          <div
+            onClick={() => {
+              setReturnTatBucket(returnTatBucket === 'within7' ? 'all' : 'within7');
+              setStatusFilter('all');
+              setDnrFilter(false);
+              setDoaFilter(false);
+            }}
+            className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow cursor-pointer ${
+              returnTatBucket === 'within7' ? 'border-green-500 border-2 bg-green-50' : 'border-gray-200 hover:border-green-400'
+            }`}
+            title="Click to filter by Return TAT within 7 days"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-gray-600 font-medium">Within 7 Days</p>
+              <CheckCircle className="w-4 h-4 text-green-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{within7DaysCount}</p>
+            <p className="text-xs text-gray-500 mt-1">Return Shipped Date - Raised Date</p>
+          </div>
+
+          {/* Return TAT: Over 7 Days */}
+          <div
+            onClick={() => {
+              setReturnTatBucket(returnTatBucket === 'over7' ? 'all' : 'over7');
+              setStatusFilter('all');
+              setDnrFilter(false);
+              setDoaFilter(false);
+            }}
+            className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow cursor-pointer ${
+              returnTatBucket === 'over7' ? 'border-rose-500 border-2 bg-rose-50' : 'border-gray-200 hover:border-rose-400'
+            }`}
+            title="Click to filter by Return TAT over 7 days"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-gray-600 font-medium">Over 7 Days</p>
+              <AlertCircle className="w-4 h-4 text-rose-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{over7DaysCount}</p>
+            <p className="text-xs text-gray-500 mt-1">Return Shipped Date - Raised Date</p>
           </div>
           
           {/* DNR Cases */}
           <div 
             onClick={() => {
               setDnrFilter(!dnrFilter);
+              setDoaFilter(false);
               setStatusFilter('all'); // Clear status filter when filtering by DNR
+              setReturnTatBucket('all');
             }}
             className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow cursor-pointer bg-red-50 ${
               dnrFilter ? 'border-red-500 border-2' : 'border-red-300'
@@ -994,7 +1130,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           {/* Text search */}
           <div className="md:col-span-2">
             <div className="relative">
@@ -1077,6 +1213,21 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
               <option value="90">90+ days (shipped)</option>
             </select>
           </div>
+
+          {/* Return TAT bucket filter (rmaRaisedDate -> returnShippedDate) */}
+          <div>
+            <select
+              value={returnTatBucket}
+              onChange={(e) => setReturnTatBucket(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Return TAT</option>
+              <option value="0_3">0-3 days</option>
+              <option value="4_7">4-7 days</option>
+              <option value="8_14">8-14 days</option>
+              <option value="15_plus">15+ days</option>
+            </select>
+          </div>
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-200">
@@ -1085,18 +1236,20 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
               Showing {filteredCases.length} case{filteredCases.length !== 1 ? 's' : ''} on page {currentPage}
               {totalCases > 0 && (
                 <span className="text-blue-600 font-medium ml-1">
-                  (total {totalCases})
+                  (total {displayedTotalCases})
                 </span>
               )}
             </p>
-            {(dateFrom || dateTo || yearFilter !== 'all' || statusFilter !== 'all' || typeFilter !== 'all' || searchTerm || dnrFilter) && (
+            {(dateFrom || dateTo || yearFilter !== 'all' || statusFilter !== 'all' || typeFilter !== 'all' || searchTerm || dnrFilter || doaFilter || returnTatBucket !== 'all') && (
               <p className="text-xs text-gray-500 mt-1">
                 Filters: {[
                   dateFrom || dateTo ? `Date: ${dateFrom ? formatDate(dateFrom) : 'Any'} to ${dateTo ? formatDate(dateTo) : 'Any'}` : null,
                   yearFilter !== 'all' ? `Year: ${yearFilter}` : null,
                   statusFilter !== 'all' ? `Status: ${statusFilter === 'pending' ? 'Pending (Yet to Deliver + In Transit)' : statusFilter}` : null,
                   typeFilter !== 'all' ? `Type: ${typeFilter === 'RMA_CL' ? 'CI RMA' : typeFilter}` : null,
+                  returnTatBucket !== 'all' ? `Return TAT: ${getReturnTatBucketLabel(returnTatBucket)}` : null,
                   dnrFilter ? 'DNR (Do Not Return)' : null,
+                  doaFilter ? 'DOA (Dead On Arrival)' : null,
                   searchTerm ? `Search: "${searchTerm}"` : null
                 ].filter(Boolean).join(', ')}
               </p>
@@ -1156,6 +1309,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Product</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Defective Part</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Replacement Part</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Return TAT</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Team</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wider">Actions</th>
@@ -1164,7 +1318,7 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
               {filteredCases.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-6 py-20">
+                  <td colSpan={14} className="px-6 py-20">
                     <div className="flex flex-col items-center justify-center max-w-2xl mx-auto">
                       {/* Icon Container */}
                       <div className="relative mb-8">
@@ -1357,6 +1511,24 @@ export function RMAList({ currentUser, openCaseId, onOpenCaseHandled }: RMAListP
                     </div>
                   </td>
                   
+                  {/* Status */}
+                  <td className="px-4 py-4 whitespace-nowrap min-w-[110px]">
+                    {(() => {
+                      const tatDays = getReturnTatDays(rma.rmaRaisedDate, rma.returnShippedDate);
+                      return (
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          tatDays === null
+                            ? 'bg-gray-100 text-gray-500'
+                            : tatDays <= 7
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-rose-100 text-rose-700'
+                        }`}>
+                          {tatDays === null ? '-' : `${tatDays} day${tatDays === 1 ? '' : 's'}`}
+                        </span>
+                      );
+                    })()}
+                  </td>
+
                   {/* Status */}
                   <td className="px-4 py-4 whitespace-nowrap min-w-[120px]">
                     <span className={`px-2 py-1 rounded text-xs ${

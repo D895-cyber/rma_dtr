@@ -239,6 +239,13 @@ model RmaCase {
   defectivePartSerial     String?    @map("defective_part_serial")
   isDefectivePartDNR      Boolean    @default(false) @map("is_defective_part_dnr")  // Do Not Return
   defectivePartDNRReason  String?    @map("defective_part_dnr_reason") @db.Text  // Why DNR
+  isDOA                   Boolean?   @map("is_doa") // Dead on Arrival (manual decision)
+  doaSuggested             Boolean    @default(false) @map("doa_suggested") // system suggestion
+  doaSuggestedByCaseId     String?    @map("doa_suggested_by_case_id")
+  doaSuggestedWindowDays   Int        @default(7) @map("doa_suggested_window_days")
+  doaDecisionAt            DateTime?  @map("doa_decision_at")
+  doaDecisionBy            String?    @map("doa_decision_by")
+  doaNotes                 String?    @map("doa_notes") @db.Text
   replacedPartNumber      String?    @map("replaced_part_number")
   replacedPartSerial      String?    @map("replaced_part_serial")
   symptoms                String?    @db.Text
@@ -272,6 +279,8 @@ model RmaCase {
   @@index([rmaNumber])
   @@index([productPartNumber])
   @@index([defectivePartNumber])
+  @@index([isDOA])
+  @@index([doaSuggested])
   @@index([status, assignedTo]) // Composite index for common queries
   @@map("rma_cases")
 }

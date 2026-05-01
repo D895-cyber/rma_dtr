@@ -108,6 +108,14 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
     returnShippedDate: formatDateForInput(rma.returnShippedDate),
     // Ensure isDefectivePartDNR is explicitly set as boolean
     isDefectivePartDNR: originalDNRValue,
+    // DOA fields
+    isDOA: (rma as any).isDOA ?? null,
+    doaSuggested: (rma as any).doaSuggested ?? false,
+    doaSuggestedByCaseId: (rma as any).doaSuggestedByCaseId ?? null,
+    doaSuggestedWindowDays: (rma as any).doaSuggestedWindowDays ?? 7,
+    doaDecisionAt: (rma as any).doaDecisionAt ?? null,
+    doaDecisionBy: (rma as any).doaDecisionBy ?? null,
+    doaNotes: (rma as any).doaNotes ?? null,
     // Ensure assignedTo is set from nested assignee object if needed, and convert UUID to email
     assignedTo: originalAssignedTo,
   });
@@ -121,6 +129,32 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
   // Check if assignment has changed from original
   const currentAssignedTo = formData.assignedTo || '';
   const assignmentHasChanged = currentAssignedTo !== originalAssignedTo;
+
+  const doaNeedsDecision = formData.isDOA === null || formData.isDOA === undefined;
+
+  const [savingDoa, setSavingDoa] = useState(false);
+
+  const handleSaveDoaDecision = async (isDOA: boolean) => {
+    if (!canUpdateRma || savingDoa) return;
+    try {
+      setSavingDoa(true);
+      await onUpdate(
+        rma.id,
+        { isDOA, doaNotes: formData.doaNotes || null },
+        currentUser.email,
+        isDOA ? 'DOA Marked' : 'DOA Cleared',
+        isDOA
+          ? `Marked as DOA (repeat RMA within ${formData.doaSuggestedWindowDays || 7} days)`
+          : `Marked as NOT DOA (repeat RMA within ${formData.doaSuggestedWindowDays || 7} days)`
+      );
+      setFormData((prev) => ({ ...prev, isDOA }));
+    } catch (err: any) {
+      console.error('DOA update failed:', err);
+      alert(err?.message || 'Failed to update DOA status. Please try again.');
+    } finally {
+      setSavingDoa(false);
+    }
+  };
 
   // Update assignedTo when users load (in case users weren't loaded when formData was initialized)
   useEffect(() => {
@@ -699,6 +733,88 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
         </div>
 
         <h3 className="text-gray-900 mb-6 mt-6">Defective Part Details</h3>
+
+        {/* DOA Decision */}
+        <div className={`mb-6 rounded-lg border p-4 ${formData.doaSuggested ? 'border-orange-200 bg-orange-50' : 'border-gray-200 bg-gray-50'}`}>
+            <div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">DOA Decision</p>
+                {formData.doaSuggested ? (
+                  <p className="text-xs text-gray-700 mt-1">
+                    Suggested: repeat RMA for the same part on the same projector within {formData.doaSuggestedWindowDays || 7} days.
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-700 mt-1">
+                    Not auto-detected, but you can still mark this case as DOA manually.
+                  </p>
+                )}
+                {formData.isDOA === true && (
+                  <p className="text-xs text-green-700 mt-2 font-medium">Status: DOA</p>
+                )}
+                {formData.isDOA === false && (
+                  <p className="text-xs text-gray-700 mt-2 font-medium">Status: Not DOA</p>
+                )}
+              </div>
+
+              <div className="mt-3">
+                <p className="text-xs text-gray-600 mb-2 font-medium">DOA Actions</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSaveDoaDecision(true)}
+                  disabled={!canUpdateRma || savingDoa}
+                  className="w-full px-3 py-2 text-sm rounded-lg transition-colors"
+                  style={{
+                    backgroundColor: canUpdateRma && !savingDoa ? '#dc2626' : '#fecaca',
+                    color: canUpdateRma && !savingDoa ? '#ffffff' : '#991b1b',
+                    border: canUpdateRma && !savingDoa ? '1px solid #b91c1c' : '1px solid #fca5a5',
+                    cursor: canUpdateRma && !savingDoa ? 'pointer' : 'not-allowed',
+                    fontWeight: 600,
+                  }}
+                >
+                  {savingDoa ? 'Saving…' : 'Mark DOA'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveDoaDecision(false)}
+                  disabled={!canUpdateRma || savingDoa}
+                  className="w-full px-3 py-2 text-sm rounded-lg transition-colors"
+                  style={{
+                    backgroundColor: canUpdateRma && !savingDoa ? '#374151' : '#e5e7eb',
+                    color: canUpdateRma && !savingDoa ? '#ffffff' : '#374151',
+                    border: canUpdateRma && !savingDoa ? '1px solid #1f2937' : '1px solid #d1d5db',
+                    cursor: canUpdateRma && !savingDoa ? 'pointer' : 'not-allowed',
+                    fontWeight: 600,
+                  }}
+                >
+                  {savingDoa ? 'Saving…' : 'Not DOA'}
+                </button>
+                </div>
+                {!canUpdateRma && (
+                  <p className="text-[11px] text-amber-700 mt-2">
+                    You do not have permission to update DOA status.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <label className="block text-xs text-gray-600 mb-1">DOA Notes (optional)</label>
+              <textarea
+                value={formData.doaNotes || ''}
+                onChange={(e) => setFormData({ ...formData, doaNotes: e.target.value })}
+                disabled={!canUpdateRma}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                rows={2}
+                placeholder="Add any notes about this DOA decision..."
+              />
+              {!doaNeedsDecision && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  To change DOA status later, edit this case and update DOA via support/admin flow (can be extended).
+                </p>
+              )}
+            </div>
+          </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -938,30 +1054,6 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
           </div>
         </div>
 
-        {isEditing && (
-          <div className="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-gray-200">
-            <button
-              onClick={() => {
-                setFormData(rma);
-                setIsEditing(false);
-              }}
-              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <ProtectedComponent permission="rma:update">
-              <button
-                onClick={handleUpdate}
-                disabled={!canUpdateRma}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Check className="w-4 h-4" />
-                Save Changes
-              </button>
-            </ProtectedComponent>
-          </div>
-        )}
-
         {/* File Attachments Section */}
         <div className="bg-white rounded-lg border border-gray-200 p-6 mt-6">
           <h3 className="text-gray-900 mb-4">Attachments</h3>
@@ -1004,6 +1096,30 @@ export function RMADetail({ rma, currentUser, onClose, onUpdate }: RMADetailProp
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {isEditing && (
+        <div className="flex items-center justify-end gap-3">
+          <button
+            onClick={() => {
+              setFormData(rma);
+              setIsEditing(false);
+            }}
+            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          <ProtectedComponent permission="rma:update">
+            <button
+              onClick={handleUpdate}
+              disabled={!canUpdateRma}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Check className="w-4 h-4" />
+              Save Changes
+            </button>
+          </ProtectedComponent>
         </div>
       )}
     </div>

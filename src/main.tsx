@@ -6,12 +6,12 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { FieldModeProvider } from "./contexts/FieldModeContext";
 import { measurePageLoad } from "./utils/performance";
-import { registerSW } from "virtual:pwa-register";
 
-// Register service worker only in production.
-// In dev, SW can cache stale assets and cause blank screens.
+// Register service worker only in production via dynamic import (avoids virtual:pwa-register in dev).
 if (import.meta.env.PROD) {
-  registerSW({ immediate: true });
+  import('virtual:pwa-register').then(({ registerSW }) => {
+    registerSW({ immediate: true });
+  });
 }
 
 // Measure page load performance

@@ -25,22 +25,23 @@ if (!databaseUrl) {
     url.searchParams.delete('pool_timeout');
     url.searchParams.delete('connect_timeout');
     
-    // Add optimized connection pool parameters
-    // Increased limits to handle more concurrent requests
-    url.searchParams.set('connection_limit', '25');
-    url.searchParams.set('pool_timeout', '20');
+    // Add connection pool parameters.
+    // With hosted Postgres + poolers (e.g. Neon), smaller per-process limits reduce contention.
+    // A higher pool timeout avoids spurious failures during bursty UI polling.
+    url.searchParams.set('connection_limit', '10');
+    url.searchParams.set('pool_timeout', '60');
     url.searchParams.set('connect_timeout', '10');
     url.searchParams.set('query_timeout', '30000'); // 30 seconds query timeout
     
     databaseUrl = url.toString();
-    console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 25, timeout: 20)');
+    console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 10, timeout: 60)');
   } catch (error) {
     // If URL parsing fails, try string manipulation
     console.warn('⚠️  Could not parse DATABASE_URL as URL, using string manipulation');
     if (!databaseUrl.includes('connection_limit')) {
       const separator = databaseUrl.includes('?') ? '&' : '?';
-      databaseUrl = `${databaseUrl}${separator}connection_limit=25&pool_timeout=20&connect_timeout=10&query_timeout=30000`;
-      console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 25, timeout: 20)');
+      databaseUrl = `${databaseUrl}${separator}connection_limit=10&pool_timeout=60&connect_timeout=10&query_timeout=30000`;
+      console.log('✅ Enhanced DATABASE_URL with connection pool parameters (limit: 10, timeout: 60)');
     }
   }
 }

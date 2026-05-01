@@ -51,7 +51,12 @@ app.use(requestTimeout);
 app.use(helmet());
 
 // CORS
-const defaultAllowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const defaultAllowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
 const envAllowedOrigins = (process.env.FRONTEND_URL || '')
   .split(',')
   .map((origin) => origin.trim())
@@ -145,7 +150,7 @@ app.use(errorHandler);
 // START SERVER
 // ============================================
 
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`\n🚀 CRM API Server is running!`);
   console.log(`📍 URL: http://localhost:${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -153,9 +158,19 @@ app.listen(PORT, () => {
   console.log(`\n✅ Ready to accept requests!\n`);
 });
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err: Error) => {
-  console.error('Unhandled Promise Rejection:', err);
-  process.exit(1);
+httpServer.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n❌ Port ${PORT} is already in use.`);
+    console.error(`   Run this to free it:  lsof -ti :${PORT} | xargs kill -9`);
+    console.error(`   Then restart the server.\n`);
+    process.exit(1);
+  } else {
+    console.error('Server error:', err);
+    process.exit(1);
+  }
 });
 
+// Log unhandled rejections without exiting (avoids nodemon crash loops; fix the handler instead).
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error('Unhandled Promise Rejection:', reason);
+});

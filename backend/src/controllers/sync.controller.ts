@@ -6,12 +6,20 @@ import {
   getSheetsClient,
   ensureSheetsExist,
   writeSheet,
+  readSpreadsheetValues,
   isGoogleSheetsConfigured,
 } from '../services/googleSheets.service';
 import { stripSerialSuffix } from '../utils/serialNumber.util';
+import { parseTwoHeaderRowsDataFromRow3 } from '../utils/sheetTwoRowHeader.util';
 
 const MAX_ROWS_PER_SHEET = 5000;
 const SHEET_NAMES = ['RMA Cases', 'DTR Cases'];
+
+/** Row 1 banner (optional via env); row 2 = headers; row 3+ = data — matches two-row header templates. */
+function bannerRow(title: string, columnCount: number): string[] {
+  if (columnCount <= 0) return [title];
+  return [title, ...Array(columnCount - 1).fill('')];
+}
 
 function formatDate(d: Date | null): string {
   if (!d) return '';
@@ -47,7 +55,7 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
       );
     }
 
-    const client = getSheetsClient();
+    const client = await getSheetsClient();
     await ensureSheetsExist(client, spreadsheetId, SHEET_NAMES);
 
     // Fetch RMA cases (no pagination for full export, but cap for safety)
@@ -97,7 +105,13 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
       'Created At',
       'Updated At',
     ];
-    const rmaRows: string[][] = [rmaHeaders];
+    const rmaBannerText =
+      process.env.GOOGLE_SHEET_RMA_BANNER?.trim() ||
+      'RMA Cases — CRM sync (row 1 title · row 2 headers · data from row 3)';
+    const rmaRows: string[][] = [
+      bannerRow(rmaBannerText, rmaHeaders.length),
+      rmaHeaders,
+    ];
     for (const c of rmaCases) {
       rmaRows.push([
         c.id,
@@ -164,7 +178,13 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
       'Closed Date',
       'Created At',
     ];
-    const dtrRows: string[][] = [dtrHeaders];
+    const dtrBannerText =
+      process.env.GOOGLE_SHEET_DTR_BANNER?.trim() ||
+      'DTR Cases — CRM sync (row 1 title · row 2 headers · data from row 3)';
+    const dtrRows: string[][] = [
+      bannerRow(dtrBannerText, dtrHeaders.length),
+      dtrHeaders,
+    ];
     for (const c of dtrCases) {
       dtrRows.push([
         c.id,
@@ -188,8 +208,8 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
     const syncedAt = new Date().toISOString();
 
     return sendSuccess(res, {
-      rmaRows: rmaRows.length - 1,
-      dtrRows: dtrRows.length - 1,
+      rmaRows: rmaRows.length - 2,
+      dtrRows: dtrRows.length - 2,
       spreadsheetId,
       syncedAt,
       syncedBy: req.user
@@ -220,5 +240,87 @@ export async function getSyncStatus(_req: AuthRequest, res: Response) {
   } catch (error: unknown) {
     console.error('Sync status error:', error);
     return sendError(res, 'Failed to get sync status', 500);
+  }
+}
+
+const DEFAULT_READ_RANGE = 'A1:ZZ5000';
+
+/**
+ * GET /api/sync/google-sheet/read
+ * Reads a tab using rows 1–2 as headers and row 3+ as data rows; returns JSON records.
+ *
+ * Query: sheetName (required) — tab name, e.g. "Sheet1" or "RMA Cases"
+ *        spreadsheetId (optional) — defaults to GOOGLE_SHEET_ID
+ *        range (optional) — A1 suffix only, e.g. "A1:BA200"; default A1:ZZ5000 (combined with sheet name)
+ */
+export async function readGoogleSheetTwoRowHeaders(req: AuthRequest, res: Response) {
+  try {
+    if (!isGoogleSheetsConfigured()) {
+      return sendError(
+        res,
+        'Google Sheets is not configured. Set GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_SHEETS_CREDENTIALS_JSON.',
+        503
+      );
+    }
+
+    const sheetName = typeof req.query.sheetName === 'string' ? req.query.sheetName.trim() : '';
+    if (!sheetName) {
+      return sendError(res, 'Query parameter sheetName is required (Google Sheet tab name).', 400);
+    }
+
+    const envId = process.env.GOOGLE_SHEET_ID?.trim();
+    const spreadsheetId =
+      typeof req.query.spreadsheetId === 'string' && req.query.spreadsheetId.trim()
+        ? req.query.spreadsheetId.trim()
+        : envId;
+
+    if (!spreadsheetId) {
+      return sendError(
+        res,
+        'spreadsheetId query param or GOOGLE_SHEET_ID env must be set.',
+        400
+      );
+    }
+
+    let rangeSuffix =
+      typeof req.query.range === 'string' && req.query.range.trim()
+        ? req.query.range.trim()
+        : DEFAULT_READ_RANGE;
+
+    if (!/^[A-Za-z]+[0-9]+(:[A-Za-z]+[0-9]+)?$/.test(rangeSuffix)) {
+      return sendError(
+        res,
+        'range must be A1 notation only (e.g. A1:ZZ500), without the sheet name.',
+        400
+      );
+    }
+
+    const escapedName = sheetName.replace(/'/g, "''");
+    const quotedTab = `'${escapedName}'`;
+    const a1Range = `${quotedTab}!${rangeSuffix}`;
+
+    const client = await getSheetsClient();
+    const values = await readSpreadsheetValues(client, spreadsheetId, a1Range);
+    const parsed = parseTwoHeaderRowsDataFromRow3(values);
+
+    return sendSuccess(
+      res,
+      {
+        spreadsheetId,
+        sheetName,
+        range: a1Range,
+        columnKeys: parsed.columnKeys,
+        headerRow1: parsed.headerRow1,
+        headerRow2: parsed.headerRow2,
+        row1IgnoredAsBanner: parsed.row1IgnoredAsBanner,
+        rowCount: parsed.rows.length,
+        rows: parsed.rows,
+      },
+      'Sheet parsed with two header rows.'
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Read failed';
+    console.error('Google Sheet read error:', error);
+    return sendError(res, `Failed to read Google Sheet: ${message}`, 500);
   }
 }

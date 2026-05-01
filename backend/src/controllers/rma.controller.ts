@@ -28,6 +28,7 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
       dateTo,
       year,
       dnr,
+      doa,
       ageDays,
     } = req.query;
 
@@ -42,6 +43,10 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
     const shouldFilterDnr = String(dnr).toLowerCase() === 'true';
     if (shouldFilterDnr) {
       baseWhere.isDefectivePartDNR = true;
+    }
+    const shouldFilterDoa = String(doa).toLowerCase() === 'true';
+    if (shouldFilterDoa) {
+      baseWhere.isDOA = true;
     }
 
     const parsedAgeDays = Number(ageDays);
@@ -113,7 +118,7 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
     const take = Math.max(1, Math.min(Number(limit) || 50, maxLimit));
     const skip = (currentPage - 1) * take;
 
-    const [cases, total, statusBreakdown, dnrCount, statsTotal, distinctRaisedDates] = await Promise.all([
+    const [cases, total, statusBreakdown, dnrCount, doaCount, statsTotal, distinctRaisedDates] = await Promise.all([
       prisma.rmaCase.findMany({
         where,
         include: {
@@ -143,6 +148,7 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
           })
         : Promise.resolve([] as any[]),
       shouldIncludeStats ? prisma.rmaCase.count({ where: { ...baseWhere, isDefectivePartDNR: true } }) : Promise.resolve(0),
+      shouldIncludeStats ? prisma.rmaCase.count({ where: { ...baseWhere, isDOA: true } }) : Promise.resolve(0),
       shouldIncludeStats ? prisma.rmaCase.count({ where: baseWhere }) : Promise.resolve(0),
       shouldIncludeStats
         ? prisma.rmaCase.findMany({
@@ -178,6 +184,7 @@ export async function getAllRmaCases(req: AuthRequest, res: Response) {
           closed: statusCounts.closed || 0,
           cancelled: statusCounts.cancelled || 0,
           dnr: dnrCount || 0,
+          doa: doaCount || 0,
         }
       : undefined;
 
@@ -344,6 +351,46 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
       return sendError(res, `Invalid RMA type. Must be one of: RMA, SRMA, RMA_CL, Lamps`, 400);
     }
 
+    // DOA suggestion: repeat RMA for same part on same projector within 7 days.
+    // Projector is derived from Audi -> Projector.
+    const windowDays = 7;
+    let doaSuggested = false;
+    let doaSuggestedByCaseId: string | null = null;
+    if (audiId && defectivePartNumber && rmaRaisedDate) {
+      const audi = await prisma.audi.findUnique({
+        where: { id: audiId },
+        select: { projectorId: true },
+      });
+      const projectorId = audi?.projectorId || null;
+      if (projectorId) {
+        const raised = new Date(rmaRaisedDate);
+        // Treat as date-only window (RmaCase uses @db.Date).
+        const windowStart = new Date(raised);
+        windowStart.setDate(windowStart.getDate() - windowDays);
+
+        const previous = await prisma.rmaCase.findFirst({
+          where: {
+            defectivePartNumber,
+            rmaRaisedDate: {
+              gte: windowStart,
+              lt: raised,
+            },
+            status: { not: 'cancelled' },
+            audi: {
+              projectorId,
+            },
+          },
+          select: { id: true },
+          orderBy: { rmaRaisedDate: 'desc' },
+        });
+
+        if (previous?.id) {
+          doaSuggested = true;
+          doaSuggestedByCaseId = previous.id;
+        }
+      }
+    }
+
     const createStartedAt = Date.now();
     // Create RMA case
     const rmaCase = await prisma.rmaCase.create({
@@ -365,6 +412,13 @@ export async function createRmaCase(req: AuthRequest, res: Response) {
         defectivePartSerial: defectivePartSerial || null,
         isDefectivePartDNR: isDefectivePartDNR || false,  // DNR = Do Not Return to OEM
         defectivePartDNRReason: defectivePartDNRReason || null,  // Reason for DNR
+        isDOA: null,
+        doaSuggested,
+        doaSuggestedByCaseId,
+        doaSuggestedWindowDays: windowDays,
+        doaDecisionAt: null,
+        doaDecisionBy: null,
+        doaNotes: null,
         replacedPartNumber: replacedPartNumber || null,
         replacedPartSerial: replacedPartSerial || null,
         symptoms: symptoms || null,
@@ -533,6 +587,8 @@ export async function updateRmaCase(req: AuthRequest, res: Response) {
       'defectivePartSerial',
       'isDefectivePartDNR',
       'defectivePartDNRReason',
+      'isDOA',
+      'doaNotes',
       'replacedPartNumber',
       'replacedPartSerial',
       'symptoms',
@@ -552,6 +608,18 @@ export async function updateRmaCase(req: AuthRequest, res: Response) {
     for (const field of allowedFields) {
       if (updateData[field] !== undefined) {
         cleanUpdateData[field] = updateData[field];
+      }
+    }
+
+    // If DOA decision is explicitly being set (true/false), capture decision metadata.
+    if (Object.prototype.hasOwnProperty.call(cleanUpdateData, 'isDOA')) {
+      if (cleanUpdateData.isDOA === true || cleanUpdateData.isDOA === false) {
+        cleanUpdateData.doaDecisionAt = new Date();
+        cleanUpdateData.doaDecisionBy = req.user!.userId;
+      } else if (cleanUpdateData.isDOA === null) {
+        // Allow resetting decision.
+        cleanUpdateData.doaDecisionAt = null;
+        cleanUpdateData.doaDecisionBy = null;
       }
     }
 

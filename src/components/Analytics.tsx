@@ -17,10 +17,13 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   const canViewDtr = ((currentUser?.role || '').toString().toLowerCase() !== 'staff');
   const [allDTRCases, setAllDTRCases] = useState<any[]>([]);
   const [allRMACases, setAllRMACases] = useState<any[]>([]);
+  const [allTimeDtrTotal, setAllTimeDtrTotal] = useState(0);
+  const [allTimeRmaTotal, setAllTimeRmaTotal] = useState(0);
   const [loadingAllCases, setLoadingAllCases] = useState(true);
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [selectedSite, setSelectedSite] = useState('all');
   const [selectedEngineer, setSelectedEngineer] = useState('all');
+  const [returnTatBucket, setReturnTatBucket] = useState<'all' | '0_3' | '4_7' | '8_14' | '15_plus'>('all');
   const [timeView, setTimeView] = useState<'monthly' | 'quarterly'>('monthly');
   const [topProjectors, setTopProjectors] = useState<any[]>([]);
   const [loadingTopProjectors, setLoadingTopProjectors] = useState(false);
@@ -67,10 +70,10 @@ export function Analytics({ currentUser }: AnalyticsProps) {
 
       const loadCappedPages = async (
         loader: (params: { page: number; limit: number }) => Promise<any>,
-      ) => {
+      ): Promise<{ cases: any[]; total: number }> => {
         const firstResponse = await loader({ page: 1, limit: PAGE_SIZE });
         if (!firstResponse?.success || !firstResponse?.data) {
-          return [];
+          return { cases: [], total: 0 };
         }
 
         const firstCases = firstResponse.data.cases || [];
@@ -80,7 +83,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
         const remainingPages = Array.from({ length: Math.max(0, pagesToFetch - 1) }, (_, i) => i + 2);
 
         if (remainingPages.length === 0) {
-          return firstCases.slice(0, MAX_CASES_PER_TYPE);
+          return { cases: firstCases.slice(0, MAX_CASES_PER_TYPE), total };
         }
 
         const pageResponses = await Promise.all(
@@ -93,66 +96,41 @@ export function Analytics({ currentUser }: AnalyticsProps) {
             merged.push(response.data.cases);
           }
         }
-        return merged.flat().slice(0, MAX_CASES_PER_TYPE);
+        return { cases: merged.flat().slice(0, MAX_CASES_PER_TYPE), total };
       };
 
       try {
         try {
-          const dtrCases = await loadCappedPages((params) => dtrService.getAllDTRCases(params));
-          setAllDTRCases(dtrCases);
+          if (canViewDtr) {
+            const dtrResult = await loadCappedPages((params) => dtrService.getAllDTRCases(params));
+            setAllDTRCases(dtrResult.cases);
+            setAllTimeDtrTotal(dtrResult.total);
+          } else {
+            setAllDTRCases([]);
+            setAllTimeDtrTotal(0);
+          }
         } catch (dtrError) {
           console.error('Error loading DTR cases:', dtrError);
           setAllDTRCases([]);
-        // Fetch all DTR cases (not available to staff)
-        const dtrCases: any[] = [];
-        let dtrTotal = 0;
-        if (canViewDtr) {
-          let dtrPage = 1;
-          try {
-            const firstDTRResponse = await dtrService.getAllDTRCases({ page: 1, limit: 100 });
-            console.log('DTR Response:', firstDTRResponse);
-
-            if (firstDTRResponse && firstDTRResponse.success && firstDTRResponse.data) {
-              const cases = firstDTRResponse.data.cases || [];
-              dtrCases.push(...cases);
-              dtrTotal = firstDTRResponse.data.total || cases.length;
-
-              if (dtrTotal > cases.length) {
-                while (dtrCases.length < dtrTotal) {
-                  dtrPage++;
-                  try {
-                    const response = await dtrService.getAllDTRCases({ page: dtrPage, limit: 100 });
-                    if (response && response.success && response.data && response.data.cases && response.data.cases.length > 0) {
-                      dtrCases.push(...response.data.cases);
-                    } else {
-                      break;
-                    }
-                  } catch (pageError) {
-                    console.error(`Error loading DTR page ${dtrPage}:`, pageError);
-                    break;
-                  }
-                }
-              }
-            } else {
-              console.warn('DTR response was not successful or missing data:', firstDTRResponse);
-            }
-          } catch (dtrError) {
-            console.error('Error loading DTR cases:', dtrError);
-          }
+          setAllTimeDtrTotal(0);
         }
 
         try {
-          const rmaCases = await loadCappedPages((params) => rmaService.getAllRMACases(params));
-          setAllRMACases(rmaCases);
+          const rmaResult = await loadCappedPages((params) => rmaService.getAllRMACases(params));
+          setAllRMACases(rmaResult.cases);
+          setAllTimeRmaTotal(rmaResult.total);
         } catch (rmaError) {
           console.error('Error loading RMA cases:', rmaError);
           setAllRMACases([]);
+          setAllTimeRmaTotal(0);
         }
       } catch (error) {
         console.error('Error loading all cases for analytics:', error);
         // Set empty arrays on error so the page can still render
         setAllDTRCases([]);
         setAllRMACases([]);
+        setAllTimeDtrTotal(0);
+        setAllTimeRmaTotal(0);
       } finally {
         setLoadingAllCases(false);
       }
@@ -185,6 +163,15 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     return true;
   };
 
+  const getReturnTatDays = (rmaRaisedDate: string | null | undefined, returnShippedDate: string | null | undefined): number | null => {
+    if (!rmaRaisedDate || !returnShippedDate) return null;
+    const start = new Date(rmaRaisedDate);
+    const end = new Date(returnShippedDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+    const diffDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 ? diffDays : null;
+  };
+
   // Apply filters to data (must be called before conditional return)
   const filteredData = useMemo(() => {
     let filteredDTR = [...allDTRCases];
@@ -214,8 +201,21 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       filteredRMA = filteredRMA.filter(rma => rma.assignedTo === selectedEngineer || rma.createdBy === selectedEngineer);
     }
 
+    // Return TAT bucket filter (rmaRaisedDate -> returnShippedDate)
+    if (returnTatBucket !== 'all') {
+      filteredRMA = filteredRMA.filter((rma) => {
+        const tatDays = getReturnTatDays(rma.rmaRaisedDate || rma.createdAt || rma.customerErrorDate, rma.returnShippedDate);
+        if (tatDays === null) return false;
+        if (returnTatBucket === '0_3') return tatDays >= 0 && tatDays <= 3;
+        if (returnTatBucket === '4_7') return tatDays >= 4 && tatDays <= 7;
+        if (returnTatBucket === '8_14') return tatDays >= 8 && tatDays <= 14;
+        if (returnTatBucket === '15_plus') return tatDays >= 15;
+        return true;
+      });
+    }
+
     return { filteredDTR, filteredRMA };
-  }, [allDTRCases, allRMACases, dateRange, selectedSite, selectedEngineer]);
+  }, [allDTRCases, allRMACases, dateRange, selectedSite, selectedEngineer, returnTatBucket]);
 
   const { filteredDTR: dtrCases, filteredRMA: rmaCases } = filteredData;
 
@@ -430,9 +430,20 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     return daysSinceShipped !== null && daysSinceShipped > 30;
   }), [rmaCases, today]);
 
+  const hasActiveFilters = dateRange.from || dateRange.to || selectedSite !== 'all' || selectedEngineer !== 'all' || returnTatBucket !== 'all';
+
   // DTR vs RMA counts
-  const totalDTR = dtrCases.length;
-  const totalRMA = rmaCases.length;
+  const totalDTR = hasActiveFilters ? dtrCases.length : allTimeDtrTotal;
+  const totalRMA = hasActiveFilters ? rmaCases.length : allTimeRmaTotal;
+  const validReturnTatDays = useMemo(
+    () =>
+      rmaCases
+        .map((rma) => getReturnTatDays(rma.rmaRaisedDate || rma.createdAt || rma.customerErrorDate, rma.returnShippedDate))
+        .filter((days): days is number => days !== null),
+    [rmaCases]
+  );
+  const within7DaysCount = useMemo(() => validReturnTatDays.filter((days) => days <= 7).length, [validReturnTatDays]);
+  const over7DaysCount = useMemo(() => validReturnTatDays.filter((days) => days > 7).length, [validReturnTatDays]);
 
   // Status breakdown
   const dtrByStatus = useMemo(() => [
@@ -452,7 +463,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
   // RMA Type breakdown
   // Backend/API uses enum values: 'RMA', 'SRMA', 'RMA_CL', 'Lamps'
   // Display label for RMA_CL is "RMA CL"
-  const rmaByType = [
+  const rmaByType = useMemo(() => [
     { name: 'RMA', count: rmaCases.filter(r => r.rmaType === 'RMA').length, color: '#3b82f6' },
     { name: 'SRMA', count: rmaCases.filter(r => r.rmaType === 'SRMA').length, color: '#8b5cf6' },
     { name: 'RMA CL', count: rmaCases.filter(r => r.rmaType === 'RMA_CL').length, color: '#f59e0b' },
@@ -680,6 +691,8 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       ['Total RMA Cases', totalRMA],
       ['Open RMAs', rmaCases.filter(r => r.status === 'open').length],
       ['Closed RMAs', rmaCases.filter(r => r.status === 'closed').length],
+      ['Return TAT Within 7 Days', within7DaysCount],
+      ['Return TAT Over 7 Days', over7DaysCount],
       ['Average Shipping Time (days)', avgShippingTime !== null ? avgShippingTime : 'No data'],
       ['Median Return Time (days)', medianReturnTime !== null ? medianReturnTime : 'No data'],
       [],
@@ -699,8 +712,6 @@ export function Analytics({ currentUser }: AnalyticsProps) {
     a.download = `analytics-report-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
   };
-
-  const hasActiveFilters = dateRange.from || dateRange.to || selectedSite !== 'all' || selectedEngineer !== 'all';
 
   // Show loading state while fetching all cases (after all hooks)
   if (loadingAllCases) {
@@ -743,6 +754,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
                   setDateRange({ from: '', to: '' });
                   setSelectedSite('all');
                   setSelectedEngineer('all');
+                  setReturnTatBucket('all');
                 }}
                 className="ml-4 flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded"
               >
@@ -787,7 +799,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label className="block text-sm text-gray-700 mb-2">From Date</label>
             <input
@@ -832,6 +844,20 @@ export function Analytics({ currentUser }: AnalyticsProps) {
               ))}
             </select>
           </div>
+          <div>
+            <label className="block text-sm text-gray-700 mb-2">Return TAT Bucket</label>
+            <select
+              value={returnTatBucket}
+              onChange={(e) => setReturnTatBucket(e.target.value as 'all' | '0_3' | '4_7' | '8_14' | '15_plus')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All</option>
+              <option value="0_3">0-3 days</option>
+              <option value="4_7">4-7 days</option>
+              <option value="8_14">8-14 days</option>
+              <option value="15_plus">15+ days</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -874,7 +900,7 @@ export function Analytics({ currentUser }: AnalyticsProps) {
       )}
 
       {/* Key Metrics */}
-      <div className={`grid grid-cols-1 ${canViewDtr ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
+      <div className={`grid grid-cols-1 ${canViewDtr ? 'md:grid-cols-6' : 'md:grid-cols-5'} gap-4`}>
         {canViewDtr && (
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <p className="text-sm text-gray-600 mb-2">Total DTR Cases</p>
@@ -890,6 +916,16 @@ export function Analytics({ currentUser }: AnalyticsProps) {
           <p className="text-xs text-gray-500 mt-2">
             {hasActiveFilters ? 'Filtered results' : 'All time'}
           </p>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <p className="text-sm text-gray-600 mb-2">Within 7 Days</p>
+          <p className="text-2xl font-bold text-green-600">{within7DaysCount}</p>
+          <p className="text-xs text-gray-500 mt-2">Raised to Return Shipped</p>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <p className="text-sm text-gray-600 mb-2">Over 7 Days</p>
+          <p className="text-2xl font-bold text-rose-600">{over7DaysCount}</p>
+          <p className="text-xs text-gray-500 mt-2">Raised to Return Shipped</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <p className="text-sm text-gray-600 mb-2">Avg Shipping Time</p>
@@ -1081,40 +1117,6 @@ export function Analytics({ currentUser }: AnalyticsProps) {
                   />
                   <span className="text-sm text-gray-700">
                     {entry.name}: <span className="font-medium">{entry.count}</span>
-          <div className="grid grid-cols-1 md:grid-cols-[2fr,minmax(0,1fr)] gap-4 items-center">
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={rmaByType}
-                    dataKey="count"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={40}
-                    outerRadius={80}
-                    labelLine={false}
-                  >
-                    {rmaByType.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="space-y-2">
-              {rmaByType.map((entry) => (
-                <div key={entry.name} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-block w-3 h-3 rounded-full"
-                      style={{ backgroundColor: entry.color }}
-                    />
-                    <span className="text-gray-800">{entry.name}</span>
-                  </div>
-                  <span className="text-gray-600">
-                    {entry.count}
                   </span>
                 </div>
               ))}

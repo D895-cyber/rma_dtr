@@ -21,7 +21,8 @@ export async function getUserNotifications(req: AuthRequest, res: Response) {
     const take = Math.max(1, Math.min(parsedLimit, maxLimit));
     const skip = (currentPage - 1) * take;
 
-    const [notifications, total] = await Promise.all([
+    // Use a transaction to avoid consuming multiple pool connections per request.
+    const [notifications, total] = await prisma.$transaction([
       prisma.notification.findMany({
         where,
         orderBy: { createdAt: 'desc' },

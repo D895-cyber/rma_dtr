@@ -94,72 +94,45 @@ export async function getDashboardStats(req: AuthRequest, res: Response) {
     const [recentDtrCasesList, recentRmaCasesList] = compact
       ? [[], []]
       : await Promise.all([
-          prisma.dtrCase.findMany({
-    // Get recent case objects (last 5) for dashboard display
-    const [recentDtrCasesList, recentRmaCasesList] = await Promise.all([
-      canIncludeDtr
-        ? prisma.dtrCase.findMany({
-            where: pvrWhere,
-            take: 5,
-            orderBy: { createdAt: 'desc' },
-            include: {
-              site: true,
-              audi: {
+          canIncludeDtr
+            ? prisma.dtrCase.findMany({
+                where: pvrWhere,
+                take: 5,
+                orderBy: { createdAt: 'desc' },
                 include: {
-                  projector: {
+                  site: true,
+                  audi: {
                     include: {
-                      projectorModel: true,
+                      projector: {
+                        include: {
+                          projectorModel: true,
+                        },
+                      },
+                    },
+                  },
+                  creator: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      role: true,
+                    },
+                  },
+                  assignee: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      role: true,
                     },
                   },
                 },
-              },
-              creator: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-              },
-              assignee: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-              },
-              creator: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-              },
-              assignee: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-                },
-            },
-          }),
+              })
+            : Promise.resolve([]),
           prisma.rmaCase.findMany({
             where: pvrWhere,
             take: 5,
             orderBy: { createdAt: 'desc' },
-          })
-        : Promise.resolve([]),
-      prisma.rmaCase.findMany({
-        where: pvrWhere,
-        take: 5,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          site: true,
-          audi: {
             include: {
               site: true,
               audi: {

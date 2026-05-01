@@ -52,11 +52,11 @@ export const removeAuthToken = () => {
 export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestInit = {},
-  retries: number = 1
+  retries: number = 1,
+  timeoutMs: number = 30000
 ): Promise<{ success: boolean; data?: T; message?: string; error?: string }> {
   const token = getAuthToken();
-  const REQUEST_TIMEOUT = 30000; // 30 seconds
-  
+
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...options.headers,
@@ -68,7 +68,7 @@ export async function apiRequest<T = any>(
 
   // Create abort controller for timeout
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -135,7 +135,7 @@ export async function apiRequest<T = any>(
       if (retries > 0) {
         console.warn(`Request timeout, retrying... (${retries} retries left)`);
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
-        return apiRequest<T>(endpoint, options, retries - 1);
+        return apiRequest<T>(endpoint, options, retries - 1, timeoutMs);
       }
       return {
         success: false,
@@ -144,12 +144,13 @@ export async function apiRequest<T = any>(
       };
     }
 
-    // Handle network errors with retry
-    if (error.message?.includes('fetch') || error.message?.includes('network')) {
+    // Handle network errors — only retry non-auth endpoints; auth retries cause long loading spinners.
+    const isAuthEndpoint = endpoint.includes('/auth/');
+    if (!isAuthEndpoint && (error.message?.includes('fetch') || error.message?.includes('network'))) {
       if (retries > 0) {
         console.warn(`Network error, retrying... (${retries} retries left)`);
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
-        return apiRequest<T>(endpoint, options, retries - 1);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return apiRequest<T>(endpoint, options, retries - 1, timeoutMs);
       }
     }
 
@@ -164,21 +165,26 @@ export async function apiRequest<T = any>(
 
 // Convenient HTTP method wrappers
 export const api = {
-  get: <T = any>(endpoint: string) => 
-    apiRequest<T>(endpoint, { method: 'GET' }),
-  
-  post: <T = any>(endpoint: string, data?: any) =>
-    apiRequest<T>(endpoint, {
-      method: 'POST',
-      body: data ? JSON.stringify(data) : undefined,
-    }),
-  
+  get: <T = any>(endpoint: string, timeoutMs?: number) =>
+    apiRequest<T>(endpoint, { method: 'GET' }, 1, timeoutMs ?? 30000),
+
+  post: <T = any>(endpoint: string, data?: any, timeoutMs: number = 30000) =>
+    apiRequest<T>(
+      endpoint,
+      {
+        method: 'POST',
+        body: data ? JSON.stringify(data) : undefined,
+      },
+      1,
+      timeoutMs
+    ),
+
   put: <T = any>(endpoint: string, data?: any) =>
     apiRequest<T>(endpoint, {
       method: 'PUT',
       body: data ? JSON.stringify(data) : undefined,
     }),
-  
+
   delete: <T = any>(endpoint: string) =>
     apiRequest<T>(endpoint, { method: 'DELETE' }),
 };

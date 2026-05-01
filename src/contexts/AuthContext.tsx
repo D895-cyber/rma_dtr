@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const response = await Promise.race([
           authService.getCurrentUser(),
           new Promise<{ success: false; message: string }>((resolve) =>
-            setTimeout(() => resolve({ success: false, message: 'Auth check timeout' }), 10000)
+            setTimeout(() => resolve({ success: false, message: 'Auth check timeout' }), 5000)
           ),
         ]);
         if (response.success && response.data) {

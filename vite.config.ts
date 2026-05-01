@@ -2,45 +2,53 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+/** Always the folder that contains this config + index.html (fixes `npm run dev` when shell cwd is `src/`). */
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
+
+const pwaPlugin = VitePWA({
+  registerType: 'autoUpdate',
+  // Keep plugin loaded so `virtual:pwa-register` resolves in dev; no SW / Workbox in development.
+  devOptions: {
+    enabled: false,
+  },
+  includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png'],
+  manifest: {
+    name: 'Service CRM',
+    short_name: 'Service CRM',
+    description: 'DTR & RMA Service CRM',
+    theme_color: '#2563eb',
+    background_color: '#f9fafb',
+    display: 'standalone',
+    start_url: '/',
+    scope: '/',
+    icons: [
+      { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+      { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+      { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+    ],
+  },
+  workbox: {
+    globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+    runtimeCaching: [
+      {
+        urlPattern: /^https:\/\/.*\/api\/.*/i,
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'api-cache',
+          expiration: { maxEntries: 50, maxAgeSeconds: 5 * 60 },
+          cacheableResponse: { statuses: [0, 200] },
+          networkTimeoutSeconds: 10,
+        },
+      },
+    ],
+  },
+});
 
 export default defineConfig({
-  plugins: [
-    react(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png'],
-      manifest: {
-        name: 'Service CRM',
-        short_name: 'Service CRM',
-        description: 'DTR & RMA Service CRM',
-        theme_color: '#2563eb',
-        background_color: '#f9fafb',
-        display: 'standalone',
-        start_url: '/',
-        scope: '/',
-        icons: [
-          { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
-        ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\/api\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              expiration: { maxEntries: 50, maxAgeSeconds: 5 * 60 },
-              cacheableResponse: { statuses: [0, 200] },
-              networkTimeoutSeconds: 10,
-            },
-          },
-        ],
-      },
-    }),
-  ],
+  root: projectRoot,
+  plugins: [react(), pwaPlugin],
   resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
     alias: {
@@ -82,19 +90,16 @@ export default defineConfig({
       '@radix-ui/react-aspect-ratio@1.1.2': '@radix-ui/react-aspect-ratio',
       '@radix-ui/react-alert-dialog@1.1.6': '@radix-ui/react-alert-dialog',
       '@radix-ui/react-accordion@1.2.3': '@radix-ui/react-accordion',
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(projectRoot, './src'),
     },
   },
-  
+
   build: {
     target: 'esnext',
     outDir: 'build',
-    
-    // Optimize chunk splitting for better caching
     rollupOptions: {
       output: {
         manualChunks: {
-          // Separate vendor chunks for better caching
           'react-vendor': ['react', 'react-dom'],
           'radix-ui': [
             '@radix-ui/react-accordion',
@@ -106,36 +111,30 @@ export default defineConfig({
             '@radix-ui/react-tabs',
             '@radix-ui/react-tooltip',
           ],
-          'charts': ['recharts'],
-          'forms': ['react-hook-form', 'react-day-picker'],
+          charts: ['recharts'],
+          forms: ['react-hook-form', 'react-day-picker'],
         },
       },
     },
-    
-    // Optimize chunk size warning limit
     chunkSizeWarningLimit: 1000,
-    
-    // Enable minification in production (using esbuild - faster and included)
     minify: 'esbuild',
-    
-    // Enable source maps for debugging (optional)
-    sourcemap: false, // Set to true for debugging production issues
+    sourcemap: false,
   },
-  
+
   server: {
     host: '127.0.0.1',
-    port: 3000,
+    port: 5173,
+    strictPort: true,
     open: true,
     watch: {
-      // Ignore heavy backup folders that can stall watcher startup.
       ignored: [
         '**/node_modules_corrupt_*/**',
         '**/backend/node_modules_corrupt_*/**',
+        '**/node_modules 2/**',
       ],
     },
   },
-  
-  // Pre-bundle dependencies for faster dev server startup
+
   optimizeDeps: {
     include: [
       'react',

@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
+node_modules 2/
 backend/node_modules/
+backend/node_modules 2/
+
+# Duplicate files created by macOS Finder
+*\ 2.ts
+*\ 2.js
 
 # Environment variables
 .env

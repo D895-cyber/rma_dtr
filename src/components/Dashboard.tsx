@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FileText, Package, AlertCircle, CheckCircle, Clock, TrendingUp, LayoutGrid, X } from 'lucide-react';
 import { analyticsService } from '../services/analytics.service';
 import { useDashboardLayout, DASHBOARD_WIDGET_IDS, WIDGET_LABELS, type DashboardWidgetId } from '../hooks/useDashboardLayout';
-import api from '../services/api';
+import api, { apiRequest } from '../services/api';
 import { stripSerialSuffix } from '../utils/serialNumber';
 
 interface DashboardProps {
@@ -100,13 +100,14 @@ export function Dashboard({ currentUser }: DashboardProps) {
     setSyncModalOpen(false);
     setSyncModalText(null);
     try {
-      const response = await api.post<{
+      // Sync can take several minutes (large DB export + Google Sheets API); use long timeout and no retry.
+      const response = await apiRequest<{
         rmaRows: number;
         dtrRows: number;
         spreadsheetId: string;
         syncedAt?: string;
         syncedBy?: { email: string; role: string } | null;
-      }>('/sync/google-sheet');
+      }>('/sync/google-sheet', { method: 'POST' }, 0, 600_000);
 
       if (response.success && response.data) {
         const syncedAt = response.data.syncedAt || new Date().toISOString();
@@ -290,8 +291,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
       )}
 
       {/* Widgets in user order */}
-      {!isStaff && visibleOrder.includes('dtr-stats') && (
-      {canViewDtr && visibleOrder.includes('dtr-stats') && dtrStats && (
+      {!isStaff && canViewDtr && visibleOrder.includes('dtr-stats') && dtrStats && (
       <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 shadow-md overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
@@ -405,8 +405,7 @@ export function Dashboard({ currentUser }: DashboardProps) {
 
       {/* Recent Activity */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {!isStaff && visibleOrder.includes('recent-dtr') && (
-        {canViewDtr && visibleOrder.includes('recent-dtr') && (
+        {!isStaff && canViewDtr && visibleOrder.includes('recent-dtr') && (
         /* Recent DTR */
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-300 dark:border-gray-700 shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">

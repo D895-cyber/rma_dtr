@@ -97,9 +97,59 @@ export async function ensureSheetsExist(
   });
 }
 
+function columnLetter(n: number): string {
+  let s = '';
+  while (n > 0) {
+    n--;
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26);
+  }
+  return s || 'A';
+}
+
+/** Sheet title for A1 notation (quotes + escape embedded single quotes). */
+function sheetRangePrefix(sheetName: string): string {
+  const escaped = sheetName.replace(/'/g, "''");
+  return `'${escaped}'`;
+}
+
 /**
- * Write cell values (overwrites the covered range). Sync passes row 1 = banner, row 2 = headers, row 3+ = data.
- * sheetName must match the tab name exactly.
+ * Clears columns A–`columnWidth` from `startRow` downward, then writes `rows`.
+ * Rows 1…(startRow − 1) (e.g. your title row and column headers) stay untouched.
+ * When `rows` is empty, only clears stale data below `startRow` (width from `columnWidthFallback`).
+ */
+export async function clearAndWriteSheetData(
+  client: sheets_v4.Sheets,
+  spreadsheetId: string,
+  sheetName: string,
+  startRow: number,
+  rows: string[][],
+  columnWidthFallback: number
+): Promise<void> {
+  const colCount =
+    rows.length > 0 && rows[0].length > 0 ? rows[0].length : Math.max(1, columnWidthFallback);
+  const lastCol = columnLetter(colCount);
+  const prefix = sheetRangePrefix(sheetName);
+
+  await client.spreadsheets.values.batchClear({
+    spreadsheetId,
+    requestBody: {
+      ranges: [`${prefix}!A${startRow}:${lastCol}50000`],
+    },
+  });
+
+  if (rows.length === 0) return;
+
+  await client.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${prefix}!A${startRow}`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: rows },
+  });
+}
+
+/**
+ * Overwrites values from row 1. Prefer {@link clearAndWriteSheetData} when you must preserve a title/header layout.
  */
 export async function writeSheet(
   client: sheets_v4.Sheets,
@@ -111,7 +161,7 @@ export async function writeSheet(
 
   const lastCol = columnLetter(rows[0].length);
   const lastRow = rows.length;
-  const fullRange = `${sheetName}!A1:${lastCol}${lastRow}`;
+  const fullRange = `${sheetRangePrefix(sheetName)}!A1:${lastCol}${lastRow}`;
 
   await client.spreadsheets.values.update({
     spreadsheetId,
@@ -119,16 +169,6 @@ export async function writeSheet(
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: rows },
   });
-}
-
-function columnLetter(n: number): string {
-  let s = '';
-  while (n > 0) {
-    n--;
-    s = String.fromCharCode(65 + (n % 26)) + s;
-    n = Math.floor(n / 26);
-  }
-  return s || 'A';
 }
 
 export function isGoogleSheetsConfigured(): boolean {

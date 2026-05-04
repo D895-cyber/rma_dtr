@@ -5,7 +5,7 @@ import { prisma } from '../utils/prisma.util';
 import {
   getSheetsClient,
   ensureSheetsExist,
-  writeSheet,
+  clearAndWriteSheetData,
   readSpreadsheetValues,
   isGoogleSheetsConfigured,
 } from '../services/googleSheets.service';
@@ -15,10 +15,13 @@ import { parseTwoHeaderRowsDataFromRow3 } from '../utils/sheetTwoRowHeader.util'
 const MAX_ROWS_PER_SHEET = 5000;
 const SHEET_NAMES = ['RMA Cases', 'DTR Cases'];
 
-/** Row 1 banner (optional via env); row 2 = headers; row 3+ = data — matches two-row header templates. */
-function bannerRow(title: string, columnCount: number): string[] {
-  if (columnCount <= 0) return [title];
-  return [title, ...Array(columnCount - 1).fill('')];
+/** First sheet row where CRM writes RMA data (default 3: row 1 title, row 2 headers you manage). */
+function parseDataStartRow(envName: string, defaultRow: number): number {
+  const raw = process.env[envName]?.trim();
+  if (!raw) return defaultRow;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return defaultRow;
+  return n;
 }
 
 function formatDate(d: Date | null): string {
@@ -33,7 +36,9 @@ function safeStr(val: unknown): string {
 
 /**
  * POST /api/sync/google-sheet
- * Pushes current RMA and DTR data to the configured Google Sheet (two tabs).
+ * Pushes RMA and DTR case rows into the configured Google Sheet.
+ * Does not overwrite your title/header rows: clears and rewrites only from
+ * GOOGLE_SHEET_RMA_DATA_START_ROW / GOOGLE_SHEET_DTR_DATA_START_ROW (default row 3).
  * Requires manager or admin. Configure GOOGLE_SHEET_ID and credentials.
  */
 export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
@@ -66,17 +71,16 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
         site: true,
         audi: { select: { audiNo: true } },
         creator: { select: { email: true, name: true } },
-        assignee: { select: { email: true, name: true } },
       },
     });
 
+    /** Column order must match the headers you keep on the tab (sync does not write title/headers). */
     const rmaHeaders = [
-      'Id',
+      'S. No.',
+      'Type',
       'Call Log #',
       'RMA #',
       'RMA Order #',
-      'Type',
-      'Status',
       'RMA Raised Date',
       'Customer Error Date',
       'Site',
@@ -84,42 +88,34 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
       'Product Name',
       'Part Number',
       'Serial Number',
-      'Defect Details',
-      'Defective Part Name',
       'Defective Part Number',
+      'Defective Part Name',
       'Defective Part Serial',
-      'Defective Part DNR',
-      'Defective Part DNR Reason',
+      'Symptoms',
       'Replaced Part Number',
       'Replaced Part Serial',
-      'Symptoms',
-      'Shipping Carrier',
-      'Tracking Number (Out)',
       'Shipped Date',
-      'Return Shipped Date',
-      'Return Tracking Number',
-      'Return Shipped Through',
-      'Assigned To',
-      'Created By',
+      'Tracking Number (Out)',
+      'Shipping Carrier',
       'Notes',
-      'Created At',
-      'Updated At',
+      'Created By',
+      'Status',
+      'RMA Return Shipped Date',
+      'RMA Return Tracking #',
+      'Return Shipped Through',
     ];
-    const rmaBannerText =
-      process.env.GOOGLE_SHEET_RMA_BANNER?.trim() ||
-      'RMA Cases — CRM sync (row 1 title · row 2 headers · data from row 3)';
-    const rmaRows: string[][] = [
-      bannerRow(rmaBannerText, rmaHeaders.length),
-      rmaHeaders,
-    ];
+    const rmaDataStartRow = parseDataStartRow('GOOGLE_SHEET_RMA_DATA_START_ROW', 3);
+
+    const rmaRows: string[][] = [];
+    let rmaSerial = 0;
     for (const c of rmaCases) {
+      rmaSerial += 1;
       rmaRows.push([
-        c.id,
+        String(rmaSerial),
+        c.rmaType,
         stripSerialSuffix(safeStr(c.callLogNumber)),
         stripSerialSuffix(safeStr(c.rmaNumber)),
         safeStr(c.rmaOrderNumber),
-        c.rmaType,
-        c.status,
         formatDate(c.rmaRaisedDate),
         formatDate(c.customerErrorDate),
         c.site?.siteName ?? '',
@@ -127,30 +123,32 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
         c.productName,
         c.productPartNumber,
         stripSerialSuffix(c.serialNumber),
-        safeStr(c.defectDetails),
-        safeStr(c.defectivePartName),
         safeStr(c.defectivePartNumber),
+        safeStr(c.defectivePartName),
         stripSerialSuffix(safeStr(c.defectivePartSerial)),
-        safeStr(c.isDefectivePartDNR),
-        safeStr(c.defectivePartDNRReason),
+        safeStr(c.symptoms),
         safeStr(c.replacedPartNumber),
         stripSerialSuffix(safeStr(c.replacedPartSerial)),
-        safeStr(c.symptoms),
-        safeStr(c.shippingCarrier),
-        safeStr(c.trackingNumberOut),
         formatDate(c.shippedDate),
+        safeStr(c.trackingNumberOut),
+        safeStr(c.shippingCarrier),
+        safeStr(c.notes),
+        c.creator ? `${c.creator.name}` : '',
+        c.status,
         formatDate(c.returnShippedDate),
         safeStr(c.returnTrackingNumber),
         safeStr(c.returnShippedThrough),
-        c.assignee ? `${c.assignee.name} (${c.assignee.email})` : '',
-        c.creator ? `${c.creator.name} (${c.creator.email})` : '',
-        safeStr(c.notes),
-        c.createdAt.toISOString(),
-        c.updatedAt.toISOString(),
       ]);
     }
 
-    await writeSheet(client, spreadsheetId, SHEET_NAMES[0], rmaRows);
+    await clearAndWriteSheetData(
+      client,
+      spreadsheetId,
+      SHEET_NAMES[0],
+      rmaDataStartRow,
+      rmaRows,
+      rmaHeaders.length
+    );
 
     // Fetch DTR cases
     const dtrCases = await prisma.dtrCase.findMany({
@@ -163,6 +161,7 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
       },
     });
 
+    /** Column order must match manual headers above `dtrDataStartRow`. */
     const dtrHeaders = [
       'Id',
       'Case Number',
@@ -178,13 +177,9 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
       'Closed Date',
       'Created At',
     ];
-    const dtrBannerText =
-      process.env.GOOGLE_SHEET_DTR_BANNER?.trim() ||
-      'DTR Cases — CRM sync (row 1 title · row 2 headers · data from row 3)';
-    const dtrRows: string[][] = [
-      bannerRow(dtrBannerText, dtrHeaders.length),
-      dtrHeaders,
-    ];
+    const dtrDataStartRow = parseDataStartRow('GOOGLE_SHEET_DTR_DATA_START_ROW', 3);
+
+    const dtrRows: string[][] = [];
     for (const c of dtrCases) {
       dtrRows.push([
         c.id,
@@ -203,13 +198,20 @@ export async function syncToGoogleSheet(req: AuthRequest, res: Response) {
       ]);
     }
 
-    await writeSheet(client, spreadsheetId, SHEET_NAMES[1], dtrRows);
+    await clearAndWriteSheetData(
+      client,
+      spreadsheetId,
+      SHEET_NAMES[1],
+      dtrDataStartRow,
+      dtrRows,
+      dtrHeaders.length
+    );
 
     const syncedAt = new Date().toISOString();
 
     return sendSuccess(res, {
-      rmaRows: rmaRows.length - 2,
-      dtrRows: dtrRows.length - 2,
+      rmaRows: rmaRows.length,
+      dtrRows: dtrRows.length,
       spreadsheetId,
       syncedAt,
       syncedBy: req.user
